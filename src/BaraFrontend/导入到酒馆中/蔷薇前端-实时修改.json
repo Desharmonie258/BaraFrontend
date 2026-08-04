@@ -1,0 +1,13 @@
+{
+  "id": "7c1e4a92-3b8d-4f60-a5d1-9e2f6b0c84af",
+  "name": "蔷薇前端-实时修改",
+  "content": "import 'http://localhost:5500/dist/BaraFrontend/index.js'",
+  "info": "蔷薇前端 BaraFrontend —— 本地实时调试用。\n\n需先运行 pnpm watch，并确保酒馆助手的『实时监听-允许监听』开关已启用。\n\n依赖：SP·数据库 VII（SQLite 模式）。",
+  "buttons": [
+    {
+      "name": "蔷薇前端",
+      "visible": true,
+      "content": "(window.top || window).BaraFrontend?.toggle()"
+    }
+  ]
+}
