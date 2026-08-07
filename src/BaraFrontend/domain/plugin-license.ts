@@ -10,7 +10,11 @@
  */
 
 /** 版本号。打包产物与界面共用这一个来源。 */
-export const PLUGIN_VERSION = 'BaraFrontend-1.0-RosaCaninae';
+/**
+ * 脚本版本。**配套模板的版本独立演进**：本次热修只改前端的启动时序，
+ * 数据结构未动，模板仍是 1.0-RosaCaninae，不需要重新导入。
+ */
+export const PLUGIN_VERSION = '1.0a-hotfix-RosaCaninae';
 
 /** AFPL 第 2(c)(iii) 节要求展示的简短声明 */
 export const PLUGIN_NOTICE =

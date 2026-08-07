@@ -16,6 +16,7 @@
 import App from './presentation/App.vue';
 import { mountApp, isMounted, unmount, reattach, ROOT_ID } from './presentation/bootstrap/mount';
 import { isDbPresent, canRead, canWrite, onTableUpdate } from './data/db-gateway';
+import { waitForDatabase } from './data/db-ready';
 import { useSchemaStore, __resetSchemaStore } from './stores/schema-store';
 import { useUiStore, __resetUiStore } from './stores/ui-store';
 
@@ -36,12 +37,56 @@ export interface BaraApi {
 }
 
 let disposeTableWatch: (() => void) | null = null;
+let cancelWait: (() => void) | null = null;
 
 /** 从只读快照重建表清单。表格更新后也走这里。 */
 function reloadTables(): void {
   const schema = useSchemaStore();
   schema.reload();
   console.info(`${TAG} 表清单已刷新，表数量: ${schema.sheets.length}`);
+}
+
+/**
+ * 订阅表格更新。数据库插件未挂载时返回 false，由等待循环稍后重试。
+ *
+ * `onTableUpdate` 在插件缺席时返回一个空的取消函数（见 db-gateway），
+ * 因此**必须先确认插件在场**，否则会静默订阅到一个永不触发的回调。
+ *
+ * 只订阅一次：轮询期间反复退订重订会在两次操作之间留下空窗，
+ * 恰好落在窗口里的通知就丢了。
+ */
+function attachTableWatch(): boolean {
+  if (disposeTableWatch) return true;
+  if (!isDbPresent()) return false;
+  disposeTableWatch = onTableUpdate(() => {
+    reloadTables();
+    // 表格更新往往伴随新楼层，顺带校正挂载点
+    reattach();
+  });
+  return true;
+}
+
+/** 启动等待循环。逻辑在 data/db-ready，这里只接线。 */
+function startWaiting(): void {
+  stopWaiting();
+  cancelWait = waitForDatabase({
+    attach: attachTableWatch,
+    // 静默重读：探测期每轮都打日志会淹没控制台，成败各记一次即可
+    reload: () => useSchemaStore().reload(),
+    count: () => useSchemaStore().sheets.length,
+    onReady: (attempt, count) =>
+      console.info(`${TAG} 数据库已就绪，表数量: ${count}（第 ${attempt} 次探测）`),
+    onTimeout: () =>
+      console.warn(
+        `${TAG} 等待数据库超时，表清单仍为空。` +
+          `若数据库本体稍后才加载完，可在控制台执行 BaraFrontend.refresh() 手动刷新。`,
+      ),
+  });
+}
+
+function stopWaiting(): void {
+  cancelWait?.();
+  cancelWait = null;
 }
 
 function diagnose(): Record<string, unknown> {
@@ -87,22 +132,14 @@ function init(): void {
     (window as any).BaraFrontend = buildApi();
   }
 
-  reloadTables();
-
-  disposeTableWatch?.();
-  disposeTableWatch = onTableUpdate(() => {
-    reloadTables();
-    // 表格更新往往伴随新楼层，顺带校正挂载点
-    reattach();
-  });
-
-  if (!isDbPresent()) {
-    console.warn(`${TAG} 未检测到 SP·数据库插件，表格内容将为空`);
-  } else if (!canRead()) {
+  if (isDbPresent() && !canRead()) {
     console.warn(`${TAG} 数据库插件未暴露只读快照接口，无法读取表格`);
   }
 
   console.info(`${TAG} 已加载`, diagnose());
+
+  // 数据库可能尚未启动完毕，读取交给等待循环，不在此处一次性完成
+  startWaiting();
 }
 
 $(() => {
@@ -110,6 +147,8 @@ $(() => {
 });
 
 $(window).on('pagehide', () => {
+  // 先停轮询：否则已卸载的实例还会继续探测并写 store
+  stopWaiting();
   disposeTableWatch?.();
   disposeTableWatch = null;
   if (isMounted()) unmount();
