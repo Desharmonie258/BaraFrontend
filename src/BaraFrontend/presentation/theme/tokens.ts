@@ -9,7 +9,19 @@
  * 深版的 gray-100 却是文字。
  */
 
-export type ThemeId = 'luxury' | 'retro' | 'halloween' | 'cyberpunk';
+export type ThemeId =
+  | 'luxury'
+  | 'retro'
+  | 'halloween'
+  | 'cyberpunk'
+  | 'caramellatte'
+  | 'forest'
+  | 'synthwave'
+  | 'autumn'
+  | 'sorbet'
+  | 'moorland'
+  | 'nord'
+  | 'lemonade';
 export type ModeId = 'light' | 'dark';
 
 /** 每套变体手写的 12 个原始值 */
@@ -55,7 +67,8 @@ export interface SemanticColors {
 /** 不随主题变的结构常量（31 个） */
 export const CONSTANTS = {
   space: ['0px', '2px', '4px', '8px', '12px', '16px', '24px', '32px', '48px'],
-  fontSize: { xs: '11px', sm: '12px', md: '14px', lg: '16px', xl: '20px', '2xl': '24px' },
+  // 基准提高一档：插件嵌在聊天流里，与酒馆正文同屏，字号偏小时对比吃亏
+  fontSize: { xs: '12px', sm: '13px', md: '15px', lg: '17px', xl: '21px', '2xl': '26px' },
   fontWeight: { normal: '400', medium: '500', bold: '700' },
   lineHeight: { tight: '1.25', normal: '1.5', relaxed: '1.75' },
   borderWidth: { base: '1px', strong: '2px' },
@@ -86,8 +99,6 @@ export interface ThemePreset {
   name: { 'zh-CN': string; 'en-US': string };
   /** 原生模式。auto 模式下切到该主题时落在此模式，而非系统偏好。 */
   nativeMode: ModeId;
-  /** 彩蛋主题不保证可读性，不作默认，UI 上需标注 */
-  easterEgg?: boolean;
   light: ThemeVariant;
   dark: ThemeVariant;
 }
@@ -176,13 +187,23 @@ export function deriveSemantic(p: Palette, mode: ModeId): SemanticColors {
 }
 
 /** 令牌 → CSS 变量声明。注入插件根容器，**绝不注入 :root**。 */
-export function toCssVars(c: SemanticColors, s: StyleTokens): Record<string, string> {
+export function toCssVars(
+  c: SemanticColors,
+  s: StyleTokens,
+  fontScale = 1,
+): Record<string, string> {
   const vars: Record<string, string> = {};
   const kebab = (k: string) => k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase());
 
   for (const [k, v] of Object.entries(c)) vars[`--bara-color-${kebab(k)}`] = v;
   CONSTANTS.space.forEach((v, i) => (vars[`--bara-space-${i}`] = v));
-  for (const [k, v] of Object.entries(CONSTANTS.fontSize)) vars[`--bara-font-size-${k}`] = v;
+  // 字号按比例缩放后取整到 0.5px：非整数像素在部分浏览器上渲染发虚
+  for (const [k, v] of Object.entries(CONSTANTS.fontSize)) {
+    const px = Number.parseFloat(v);
+    vars[`--bara-font-size-${k}`] = Number.isFinite(px)
+      ? `${Math.round(px * fontScale * 2) / 2}px`
+      : v;
+  }
   for (const [k, v] of Object.entries(CONSTANTS.fontWeight)) vars[`--bara-font-weight-${k}`] = v;
   for (const [k, v] of Object.entries(CONSTANTS.lineHeight)) vars[`--bara-line-height-${k}`] = v;
   for (const [k, v] of Object.entries(CONSTANTS.borderWidth)) vars[`--bara-border-width-${k}`] = v;

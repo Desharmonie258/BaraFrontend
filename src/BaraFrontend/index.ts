@@ -2,85 +2,107 @@
  * 蔷薇前端 BaraFrontend —— 脚本入口
  *
  * 模板硬约定（AGENTS.md）：
- * - 加载时机用 $(() => {})，**不能用 DOMContentLoaded** —— 产物经
- *   $('body').load() 或 import 加载时该事件不会触发；
+ * - 加载时机用 $(() => {})，**不能用 DOMContentLoaded** —— 产物以单文件
+ *   脚本内联执行时该事件不会触发；
  * - 卸载时机用 pagehide，不用 unload；
  * - 禁止在全局作用域直接执行代码。
+ *
+ * 界面**加载后即常驻**，挂在最新消息楼层内随对话流滚动，不需要按钮
+ * 或任何触发条件。详略由内容区的折叠状态决定，该状态持久化在酒馆变量中。
  *
  * 本文件与 presentation/bootstrap/ 是仅有的两处可以使用 jQuery 与
  * 酒馆助手接口的地方，其余层保持环境无关以便测试（§4 分层纪律）。
  */
 import App from './presentation/App.vue';
-import {
-  mountShadow, show, hide, isVisible, isMounted, unmount,
-} from './presentation/bootstrap/shadow-mount';
-import { isDbPresent, isSqlReady, onTableUpdate } from './data/db-gateway';
-import { useSchemaStore } from './stores/schema-store';
+import { mountApp, isMounted, unmount, reattach, ROOT_ID } from './presentation/bootstrap/mount';
+import { isDbPresent, canRead, canWrite, onTableUpdate } from './data/db-gateway';
+import { useSchemaStore, __resetSchemaStore } from './stores/schema-store';
+import { useUiStore, __resetUiStore } from './stores/ui-store';
 
-const BUTTON_ID = 'bara-frontend-launcher';
+const TAG = '[蔷薇前端]';
 
 export interface BaraApi {
-  open(): void;
-  close(): void;
+  /** 展开内容区 */
+  expand(): void;
+  /** 收起内容区 */
+  collapse(): void;
+  /** 切换展开状态 */
   toggle(): void;
+  /** 重新读取模板与行数 */
+  refresh(): void;
   isReady(): boolean;
+  /** 自检：返回当前环境的关键依赖状态，排障用 */
+  diagnose(): Record<string, unknown>;
 }
 
 let disposeTableWatch: (() => void) | null = null;
 
-/** 从数据库插件取当前生效的表格模板，用于枚举表格坞条目（不硬编码表名） */
-function loadTemplate(): void {
+/** 从只读快照重建表清单。表格更新后也走这里。 */
+function reloadTables(): void {
   const schema = useSchemaStore();
-  try {
-    const api = ((window.top ?? window) as any).AutoCardUpdaterAPI;
-    const tpl = api?.getTableTemplate?.();
-    schema.setTemplate(tpl ?? null);
-  } catch (e) {
-    console.warn('[蔷薇前端] 读取表格模板失败', e);
-    schema.setTemplate(null);
-  }
+  schema.reload();
+  console.info(`${TAG} 表清单已刷新，表数量: ${schema.sheets.length}`);
 }
 
-function refreshCounts(): void {
-  if (!isSqlReady()) return;
-  useSchemaStore().refreshCounts();
+function diagnose(): Record<string, unknown> {
+  const w = (window.top ?? window) as any;
+  return {
+    vue: typeof (globalThis as any).Vue !== 'undefined',
+    jquery: typeof $ !== 'undefined',
+    dbPlugin: !!w.AutoCardUpdaterAPI,
+    canRead: canRead(),
+    canWrite: canWrite(),
+    mounted: isMounted(),
+    hostInDom: !!w.document?.getElementById?.(ROOT_ID) || !!document.getElementById(ROOT_ID),
+    expanded: useUiStore().expanded,
+    sheets: useSchemaStore().sheets.length,
+  };
 }
 
 function buildApi(): BaraApi {
+  const ui = useUiStore();
   return {
-    open: () => {
-      show();
-      loadTemplate();
-      refreshCounts();
-    },
-    close: hide,
-    toggle: () => (isVisible() ? hide() : (show(), loadTemplate(), refreshCounts())),
+    expand: () => ui.setExpanded(true),
+    collapse: () => ui.setExpanded(false),
+    toggle: () => ui.toggleExpanded(),
+    refresh: reloadTables,
     isReady: isDbPresent,
+    diagnose,
   };
 }
 
 function init(): void {
-  mountShadow(App);
-  hide();
-
-  const api = buildApi();
-  // 挂到顶层窗口，供酒馆助手按钮与其他脚本调用
-  try {
-    ((window.top ?? window) as any).BaraFrontend = api;
-  } catch {
-    (window as any).BaraFrontend = api;
+  // 宿主必须提供全局 Vue（模板 externals 将 'vue' 映射为全局变量）。
+  // 缺失时会在挂载处抛出难以理解的错误，这里提前给出明确信息。
+  if (typeof (globalThis as any).Vue === 'undefined') {
+    console.error(`${TAG} 未找到全局 Vue，脚本无法运行。请确认酒馆助手版本。`);
+    return;
   }
 
-  loadTemplate();
-  refreshCounts();
+  mountApp(App);
+
+  try {
+    ((window.top ?? window) as any).BaraFrontend = buildApi();
+  } catch {
+    (window as any).BaraFrontend = buildApi();
+  }
+
+  reloadTables();
 
   disposeTableWatch?.();
-  disposeTableWatch = onTableUpdate(() => refreshCounts());
+  disposeTableWatch = onTableUpdate(() => {
+    reloadTables();
+    // 表格更新往往伴随新楼层，顺带校正挂载点
+    reattach();
+  });
 
   if (!isDbPresent()) {
-    console.warn('[蔷薇前端] 未检测到 SP·数据库插件，功能将不可用');
+    console.warn(`${TAG} 未检测到 SP·数据库插件，表格内容将为空`);
+  } else if (!canRead()) {
+    console.warn(`${TAG} 数据库插件未暴露只读快照接口，无法读取表格`);
   }
-  console.info('[蔷薇前端] 已加载');
+
+  console.info(`${TAG} 已加载`, diagnose());
 }
 
 $(() => {
@@ -91,6 +113,12 @@ $(window).on('pagehide', () => {
   disposeTableWatch?.();
   disposeTableWatch = null;
   if (isMounted()) unmount();
-  $(`#${BUTTON_ID}`).remove();
-  console.info('[蔷薇前端] 已卸载');
+  __resetUiStore();
+  __resetSchemaStore();
+  try {
+    delete ((window.top ?? window) as any).BaraFrontend;
+  } catch {
+    /* 顶层窗口不可写时忽略 */
+  }
+  console.info(`${TAG} 已卸载`);
 });

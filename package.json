@@ -9,7 +9,9 @@
     "dump": "node dump_schema.ts",
     "sync": "node tavern_sync.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "pack:tavern": "node pack-script.mjs",
+    "build:tavern": "webpack --mode production && node pack-script.mjs"
   },
   "browserslist": [
     "defaults and partially supports es6-module"
@@ -27,7 +29,6 @@
     "@types/webpack": "^5.28.5",
     "@typescript-eslint/parser": "^8.66.0",
     "@vitejs/plugin-vue": "^6.0.8",
-    "@vue/test-utils": "^2.4.11",
     "autoprefixer": "^10.5.4",
     "chokidar": "^5.0.0",
     "css-loader": "^7.1.4",
@@ -84,6 +85,7 @@
   },
   "dependencies": {
     "@pixi/react": "8.0.5",
+    "@vicons/fluent": "^0.13.0",
     "@vueuse/components": "^14.4.0",
     "@vueuse/core": "^14.4.0",
     "@vueuse/integrations": "^14.4.0",

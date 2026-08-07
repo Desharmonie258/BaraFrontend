@@ -52,12 +52,14 @@ jobs:
           default_author: github_actions
           message: '[bot] bundle'
 
-      # 自动打版本 tag, 从而让 jsdelivr 基于版本号在 12h 内更新缓存而不是用非版本号的 7d 缓存
-      - id: autotag
-        if: github.repository != 'StageDog/tavern_helper_template'
-        uses: phish108/autotag-action@v1.1.64
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          with-v: true
-      - if: ${{ github.repository != 'StageDog/tavern_helper_template' && steps.autotag.outputs.tag != '0.0.0' && steps.autotag.outputs.new-tag != steps.autotag.outputs.tag }}
-        run: git push --delete origin ${{ steps.autotag.outputs.tag }}
+      # 上游模板在这里有一组 autotag 步骤：每次 push 自动递增版本 tag，
+      # 并 `git push --delete` 掉上一个 —— 目的是让 jsdelivr 按版本号缓存。
+      #
+      # 本项目已移除该机制，原因有二：
+      #   1. 蔷薇前端以单文件脚本分发，代码内联在 JSON 里，不走 jsdelivr，
+      #      也没有任何运行期 CDN 依赖（见 pack-script.mjs 的产物检查）。
+      #   2. 「删除上一个 tag」会连带删掉 release 所指向的 tag。发布 v1.0.0
+      #      之后随便推一次代码，release 就会指向一个不存在的 tag。
+      #
+      # 版本号的唯一来源是 domain/plugin-license.ts 的 PLUGIN_VERSION，
+      # tag 由发布时手动打，不再自动生成。

@@ -8,21 +8,25 @@
  * 模式选择按表记忆 —— 不同表适合的模式不同，全局设置一刀切不合适。
  */
 import { computed, ref, watch } from 'vue';
-import { NInput, NRadioGroup, NRadioButton, NEmpty, NText, NSpin, NAlert } from 'naive-ui';
+import { NRadioGroup, NRadioButton, NInput, NAlert, NEmpty, NSkeleton } from 'naive-ui';
 import { useUiStore } from '../../stores/ui-store';
 import { useSchemaStore } from '../../stores/schema-store';
-import { isSqlReady } from '../../data/db-gateway';
-import { readPage, type TableRow } from '../../data/repositories/table-repo';
+import { canRead } from '../../data/db-gateway';
+import { readPage, updateCell, type TableRow } from '../../data/repositories/table-repo';
+import { getSheet } from '../../data/snapshot-repo';
+import { replaceUserPlaceholders } from '../../data/persona';
 import { t } from '../../i18n';
+import { isEnumEditable } from '../../domain/enum-policy';
+import { availableViews, resolveView, type ViewMode } from '../../domain/table-view-policy';
 import RowCard from '../components/RowCard.vue';
 import RowTable from '../components/RowTable.vue';
+import RowCalendar from '../components/RowCalendar.vue';
 
 const props = defineProps<{ sheetKey: string }>();
 
 const ui = useUiStore();
 const schema = useSchemaStore();
 
-const PAGE_SIZE = 50;
 const rows = ref<TableRow[]>([]);
 const total = ref(0);
 const loading = ref(false);
@@ -30,13 +34,82 @@ const notReady = ref(false);
 const keyword = ref('');
 
 const sheet = computed(() => schema.get(props.sheetKey));
-const viewMode = computed(() => ui.tableViewMode(props.sheetKey));
+
+/**
+ * 骨架屏只用于加载未完成。表已加载但没有数据行是**正常状态**（新开的
+ * 存档大多数表都是空的），那种情况显示空态，不能让它一直假装在加载。
+ */
+const isLoading = computed(() => !schema.loaded);
+/** 枚举候选值来自快照解析的 DDL CHECK 约束 */
+const enums = computed(() => getSheet(props.sheetKey)?.enums ?? {});
+
+/**
+ * 其中哪些允许玩家改，由 QASmoke 挡位决定（见 domain/enum-policy）。
+ * 默认挡位下只有 NPC 表的归档状态。
+ */
+const editableEnums = computed(() => {
+  const name = sheet.value?.name ?? '';
+  return Object.keys(enums.value).filter((col) => isEnumEditable(name, col, ui.qaSmoke));
+});
+
+/** 正在写入的列，用于禁用按钮避免重复提交 */
+const pending = ref<string | null>(null);
+const notice = ref<{ tone: 'success' | 'danger'; text: string } | null>(null);
+/**
+ * 日期列探测。日历视图**只对确实有日期列的表开放** ——
+ * 给技能表挂一个日历切换毫无意义，还会让人以为功能坏了。
+ */
+const dateColumn = computed(() => {
+  const cols = sheet.value?.headers ?? [];
+  return cols.find((c) => c === '日期') ?? cols.find((c) => c.includes('日期')) ?? '';
+});
+
+const VIEW_LABEL: Record<ViewMode, string> = {
+  card: 'table.view.card',
+  list: 'table.view.list',
+  calendar: 'table.view.calendar',
+};
+
+/**
+ * 可选视图由表决定：小日历表、小日记表只开放日历
+ * （见 domain/table-view-policy）。只有一种时不渲染切换器 ——
+ * 单选项的选择器只是噪声。
+ */
+const views = computed(() =>
+  availableViews(sheet.value?.name ?? '', !!dateColumn.value),
+);
+const viewOptions = computed(() =>
+  views.value.map((v) => ({ label: t(VIEW_LABEL[v], ui.lang), value: v })),
+);
+/** 记忆的模式可能已不在可用范围内（换了模板 / 改了表名），需收敛 */
+const viewMode = computed(() =>
+  resolveView(sheet.value?.name ?? '', !!dateColumn.value, ui.tableViewMode(props.sheetKey)),
+);
+
+/**
+ * 展示用的行 —— 把没展开的 `{{user}}` 换成玩家名。
+ *
+ * **只在渲染层做，不改仓储读出来的值。** 写回路径（枚举列）用的是
+ * 枚举候选值与行号，不经过这里；若在仓储层替换，一次写回就会把玩家的
+ * 真名固化进库，而库里本来存的是 `{{user}}`，换个 persona 就错了。
+ *
+ * 关键字过滤基于替换后的文本：搜「笹兵卫」应该能搜到那些写着 `{{user}}`
+ * 的行 —— 玩家看到的是什么就该能搜到什么。
+ */
+const displayRows = computed(() =>
+  rows.value.map((r) => ({
+    ...r,
+    cells: Object.fromEntries(
+      Object.entries(r.cells).map(([k, v]) => [k, replaceUserPlaceholders(v)]),
+    ),
+  })),
+);
 
 /** 关键字过滤放前端：跨列模糊匹配用 SQL 写很难看，且单页数据量不大 */
 const visibleRows = computed(() => {
   const kw = keyword.value.trim().toLowerCase();
-  if (!kw) return rows.value;
-  return rows.value.filter((r) =>
+  if (!kw) return displayRows.value;
+  return displayRows.value.filter((r) =>
     Object.values(r.cells).some((v) => String(v ?? '').toLowerCase().includes(kw)),
   );
 });
@@ -48,7 +121,7 @@ const rangeText = computed(() =>
 function load(): void {
   const s = sheet.value;
   if (!s) return;
-  if (!isSqlReady()) {
+  if (!canRead()) {
     notReady.value = true;
     rows.value = [];
     return;
@@ -56,7 +129,7 @@ function load(): void {
   notReady.value = false;
   loading.value = true;
   try {
-    const page = readPage(s, PAGE_SIZE, 0);
+    const page = readPage(props.sheetKey, ui.pageSize, 0);
     rows.value = page?.rows ?? [];
     total.value = page?.total ?? 0;
   } finally {
@@ -65,59 +138,147 @@ function load(): void {
 }
 
 watch(() => props.sheetKey, load, { immediate: true });
+watch(() => ui.pageSize, load);
+// 表数据被外部改动（AI 填表等）后同步刷新
+watch(() => schema.sheets, load);
+
+/**
+ * 写入枚举列。
+ *
+ * 写入后必须重新读取 —— 快照是值拷贝，不重载界面仍显示旧值。
+ * 失败时给出可见提示而非静默，用户才知道该重试。
+ */
+async function onSetCell(rowIndex: number, label: string, value: string): Promise<void> {
+  const s = getSheet(props.sheetKey);
+  if (!s || pending.value) return;
+  // 二次把关：界面不该发出这个请求，但写入是不可撤销的，不能只靠界面拦
+  if (!isEnumEditable(s.name, label, ui.qaSmoke)) return;
+
+  pending.value = label;
+  notice.value = null;
+  try {
+    const result = await updateCell(s, rowIndex, label, value);
+    if (result.ok) {
+      notice.value = { tone: 'success', text: t('table.saved', ui.lang, { label, value }) };
+      schema.reload();
+      load();
+    } else {
+      notice.value = { tone: 'danger', text: result.failure.message };
+    }
+  } finally {
+    pending.value = null;
+  }
+}
 </script>
 
 <template>
   <div>
-    <div class="flex items-center justify-between gap-3 flex-wrap mb-4">
-      <NText depth="3">
+    <div class="bara-tbl__bar">
+      <span class="bara-tbl__count">
         {{ t('table.count', ui.lang, { range: rangeText, total }) }}
-      </NText>
+      </span>
 
-      <div class="flex items-center gap-2">
+      <div class="bara-tbl__ctrls">
         <NRadioGroup
+          v-if="views.length > 1"
           :value="viewMode"
           size="small"
-          @update:value="(v: 'card' | 'list') => ui.setTableViewMode(props.sheetKey, v)"
+          @update:value="(v: string) => ui.setTableViewMode(props.sheetKey, v as ViewMode)"
         >
-          <NRadioButton value="card">{{ t('table.view.card', ui.lang) }}</NRadioButton>
-          <NRadioButton value="list">{{ t('table.view.list', ui.lang) }}</NRadioButton>
+          <NRadioButton v-for="o in viewOptions" :key="o.value" :value="o.value">
+            {{ o.label }}
+          </NRadioButton>
         </NRadioGroup>
         <NInput
           v-model:value="keyword"
+          type="text"
+          :placeholder="t('table.search', ui.lang)"
           size="small"
           clearable
-          :placeholder="t('table.search', ui.lang)"
-          class="w-44"
+          class="bara-tbl__search"
         />
       </div>
     </div>
 
-    <NAlert v-if="notReady" type="warning" :bordered="false" class="mb-3">
+    <NAlert v-if="notReady" type="warning" class="bara-tbl__alert">
       {{ t('error.dbNotReady', ui.lang) }}
     </NAlert>
 
-    <NSpin :show="loading">
+    <NAlert
+      v-if="notice"
+      :type="notice.tone === 'danger' ? 'error' : 'success'"
+      class="bara-tbl__alert"
+    >
+      {{ notice.text }}
+    </NAlert>
+
+    <div>
+      <div v-if="isLoading" class="bara-tbl__skeleton">
+        <NSkeleton v-for="i in 4" :key="i" text :repeat="3" />
+      </div>
+
       <NEmpty
-        v-if="!loading && visibleRows.length === 0"
+        v-else-if="!loading && visibleRows.length === 0"
         size="small"
-        :description="sheet?.name ?? '—'"
+        :description="sheet?.name ?? ''"
       />
 
-      <div
-        v-else-if="viewMode === 'card'"
-        class="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3"
-      >
+      <div v-else-if="viewMode === 'card'" class="bara-tbl__cards">
         <RowCard
           v-for="(row, i) in visibleRows"
-          :key="row.rowId ?? i"
+          :key="row.rowIndex"
           :row="row"
-          :columns="sheet?.columns ?? []"
+          :columns="sheet?.headers ?? []"
           :index="i + 1"
+          :enums="enums"
+          :editable-enums="editableEnums"
+          :pending="pending"
+          @set-cell="onSetCell"
         />
       </div>
 
-      <RowTable v-else :rows="visibleRows" :columns="sheet?.columns ?? []" />
-    </NSpin>
+      <RowCalendar
+        v-else-if="viewMode === 'calendar'"
+        :rows="visibleRows"
+        :columns="sheet?.headers ?? []"
+        :date-column="dateColumn"
+        :lang="ui.lang"
+      />
+
+      <RowTable v-else :rows="visibleRows" :columns="sheet?.headers ?? []" />
+    </div>
   </div>
 </template>
+
+<style scoped>
+.bara-tbl__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bara-space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--bara-space-5);
+}
+.bara-tbl__ctrls { display: flex; align-items: center; gap: var(--bara-space-3); }
+.bara-tbl__count {
+  font-size: var(--bara-font-size-sm);
+  color: var(--bara-color-text-muted);
+  font-family: var(--bara-font-family-mono);
+}
+.bara-tbl__alert { margin-bottom: var(--bara-space-4); }
+/* 骨架按卡片视图的密度铺，加载完成时视觉重心不跳 */
+.bara-tbl__skeleton {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--bara-space-4);
+}
+@media (min-width: 900px) { .bara-tbl__skeleton { grid-template-columns: repeat(2, 1fr); } }
+.bara-tbl__search { width: 11rem; }
+.bara-tbl__cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--bara-space-4);
+}
+@media (min-width: 900px) { .bara-tbl__cards { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1300px) { .bara-tbl__cards { grid-template-columns: repeat(3, 1fr); } }
+</style>

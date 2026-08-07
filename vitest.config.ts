@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 /**
  * 测试配置 —— 与 webpack 构建链并行存在，不影响模板的 pnpm build。
  *
- * domain/ 层的纯函数在 node 环境跑；只有 Shadow DOM 探测需要 jsdom。
+ * domain/ 与 data/ 层是纯函数，node 环境即可。组件层暂无测试。
  */
 export default defineConfig({
   plugins: [vue()],
@@ -17,23 +17,7 @@ export default defineConfig({
   },
   test: {
     setupFiles: ['./tests/setup.ts'],
-    projects: [
-      {
-        extends: true,
-        test: {
-          name: 'domain',
-          environment: 'node',
-          include: ['tests/attribute-codec.test.ts', 'tests/sql-builder.test.ts'],
-        },
-      },
-      {
-        extends: true,
-        test: {
-          name: 'dom',
-          environment: 'jsdom',
-          include: ['tests/shadow-dom-probe.test.ts'],
-        },
-      },
-    ],
+    environment: 'node',
+    include: ['tests/**/*.test.ts'],
   },
 });

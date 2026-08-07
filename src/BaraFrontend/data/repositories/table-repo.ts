@@ -1,104 +1,87 @@
 /**
- * 通用表格仓储 —— 任意模板表的读写。
+ * 通用表格仓储 —— 任意表的读写。
  *
- * 分层纪律（§8.2）：只有本层可以调 db-gateway。上层拿到的是
- * 已经整理好的 ViewModel，不接触 SQL 也不接触原始二维数组。
+ * 读走快照（二维数组），写走 CRUD。不使用 SQL：见 snapshot-repo 的说明。
+ *
+ * 分层纪律（§8.2）：只有本层可以调 db-gateway 与 snapshot-repo。
+ * 上层拿到的是整理好的 ViewModel，不接触原始数组。
  */
-import { querySql, executeBatch, refresh, type WriteFailure } from '../db-gateway';
-import { buildSelect, buildUpdate, batch } from '../sql-builder';
-import type { SheetSchema } from '../../stores/schema-store';
+import { updateCell as apiUpdateCell, deleteRow as apiDeleteRow, refresh, type WriteFailure } from '../db-gateway';
+import { getSheet, invalidate, type SheetSnapshot } from '../snapshot-repo';
 
 export interface TableRow {
-  /** 主键 row_id，写回时定位用 */
-  rowId: number | null;
-  /** 列名（中文展示名）→ 值 */
-  cells: Record<string, unknown>;
+  /**
+   * 数据库本体的行号口径：0 为表头，1 为第一行数据。
+   * 写回时直接用它定位，不需要再找主键。
+   */
+  rowIndex: number;
+  /** 列展示名 → 值 */
+  cells: Record<string, string>;
 }
 
 export interface TablePage {
+  headers: string[];
   rows: TableRow[];
   total: number;
 }
 
-/**
- * 读取一页数据。
- *
- * 用 DDL 中的英文列名查询，返回时映射回中文展示名 —— 上层只认展示名。
- * §2.2 提到只读 SQL 支持展示名，但写入路径不支持，为保持读写一致
- * 这里统一用物理列名。
- */
-export function readPage(
-  schema: SheetSchema,
-  limit: number,
-  offset: number,
-): TablePage | null {
-  if (!schema.table || schema.columns.length === 0) return null;
+/** 读取一页。offset/limit 针对数据行，不含表头。 */
+export function readPage(sheetKey: string, limit: number, offset = 0): TablePage | null {
+  const sheet = getSheet(sheetKey);
+  if (!sheet) return null;
 
-  const physical = schema.columns.map((c) => c.db).filter(Boolean);
-  if (physical.length === 0) return null;
-
-  let sql: string;
-  try {
-    sql = buildSelect({ table: schema.table, columns: physical, limit, offset });
-  } catch (e) {
-    console.warn('[蔷薇前端] 构造查询失败', e);
-    return null;
-  }
-
-  const res = querySql(sql);
-  if (!res?.rows) return null;
-
-  const rows: TableRow[] = res.rows.map((raw) => {
-    const cells: Record<string, unknown> = {};
-    schema.columns.forEach((col, i) => {
-      cells[col.label] = raw[i];
+  const slice = sheet.rows.slice(offset, offset + limit);
+  const rows: TableRow[] = slice.map((raw, i) => {
+    const cells: Record<string, string> = {};
+    sheet.headers.forEach((label, col) => {
+      cells[label] = raw[col] ?? '';
     });
-    const idIndex = schema.columns.findIndex((c) => c.db === 'row_id');
-    const rowId = idIndex >= 0 ? Number(raw[idIndex]) : null;
-    return { rowId: Number.isFinite(rowId as number) ? (rowId as number) : null, cells };
+    // +1 跳过表头，+offset 还原到全表位置
+    return { rowIndex: offset + i + 1, cells };
   });
 
-  const countRes = querySql(`SELECT COUNT(*) FROM ${schema.table}`);
-  const total = Number(countRes?.rows?.[0]?.[0]) || rows.length;
+  return { headers: sheet.headers, rows, total: sheet.rows.length };
+}
 
-  return { rows, total };
+/** 整表读取，用于行数不多的表 */
+export function readAll(sheetKey: string): TablePage | null {
+  const sheet = getSheet(sheetKey);
+  return sheet ? readPage(sheetKey, sheet.rows.length, 0) : null;
 }
 
 /**
- * 更新单个单元格。
+ * 更新单元格。
  *
- * 一律以 row_id 为键 —— 它是全部模板表的主键，比按业务列定位更可靠，
- * 也天然避开了复合唯一约束下"只按名称更新会误改同名条目"的问题。
+ * 用**表名 + 行号 + 列展示名**定位，这是数据库本体 CRUD 接口的口径 ——
+ * 不需要自己拼 SQL，也就不存在复合唯一约束下误改同名条目的问题。
  */
 export async function updateCell(
-  schema: SheetSchema,
-  rowId: number,
-  label: string,
+  sheet: SheetSnapshot,
+  rowIndex: number,
+  columnLabel: string,
   value: unknown,
 ): Promise<{ ok: true } | { ok: false; failure: WriteFailure }> {
-  const col = schema.columns.find((c) => c.label === label);
-  if (!col?.db) {
+  if (!sheet.headers.includes(columnLabel)) {
     return {
       ok: false,
-      failure: { kind: 'column_unresolved', message: `找不到列: ${label}`, raw: null },
+      failure: { kind: 'column_unresolved', message: `找不到列: ${columnLabel}`, raw: null },
     };
   }
-
-  let sql: string;
-  try {
-    sql = buildUpdate(schema.table, { [col.db]: value }, { row_id: rowId });
-  } catch (e) {
-    return {
-      ok: false,
-      failure: {
-        kind: 'unknown',
-        message: e instanceof Error ? e.message : String(e),
-        raw: null,
-      },
-    };
+  const result = await apiUpdateCell(sheet.name, rowIndex, columnLabel, value);
+  if (result.ok) {
+    // 快照是值拷贝，写入后必须失效，否则界面仍显示旧值
+    invalidate();
+    await refresh();
   }
-
-  const result = await executeBatch(batch([sql]), [schema.key]);
-  if (result.ok) await refresh();
   return result;
+}
+
+export async function deleteRow(sheet: SheetSnapshot, rowIndex: number): Promise<boolean> {
+  if (rowIndex <= 0) return false; // 0 是表头
+  const ok = await apiDeleteRow(sheet.name, rowIndex);
+  if (ok) {
+    invalidate();
+    await refresh();
+  }
+  return ok;
 }

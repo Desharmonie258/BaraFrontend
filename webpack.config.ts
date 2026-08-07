@@ -545,6 +545,42 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
       ) {
         return callback();
       }
+      // 必须与宿主共用同一个 Vue 实例的库，一律本地打包而不走 CDN。
+      //
+      // 走 CDN 的 `/+esm` 会连带引入另一份 Vue，组件因此运行在与宿主
+      // 不同的实例上，provide/inject 跨实例失效 —— 表现为
+      // 「`n-collapse-item` must be placed inside `n-collapse`」这类
+      // 上下文注入错误。本地打包后其内部的 `import from 'vue'` 会同样
+      // 命中下方的全局映射，从而与宿主共用一个 Vue。
+      // naive-ui 的整棵依赖树都要一起本地化：vooks / vueuc / vdirs 等
+      // 同样 `import from 'vue'`，只打包 naive-ui 本体的话它们仍会从
+      // CDN 各自拉一份 Vue，实例分裂的问题依旧存在。
+      const bundle_locally = [
+        'naive-ui',
+        '@css-render/plugin-bem',
+        '@css-render/vue3-ssr',
+        'async-validator',
+        'css-render',
+        'csstype',
+        'date-fns',
+        'date-fns-tz',
+        'evtd',
+        'highlight.js',
+        'lodash-es',
+        'seemly',
+        'treemate',
+        'vdirs',
+        'vooks',
+        'vueuc',
+        '@juggle/resize-observer',
+        '@emotion/hash',
+        // 图标：10072 个组件、57MB，必须靠 tree shaking 只带走用到的几个
+        '@vicons/fluent',
+      ];
+      if (bundle_locally.some(key => request === key || request.startsWith(`${key}/`))) {
+        return callback();
+      }
+
       const global = {
         jquery: '$',
         lodash: '_',

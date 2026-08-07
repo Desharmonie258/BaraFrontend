@@ -1,81 +1,93 @@
 <script setup lang="ts">
+/**
+ * 标题栏。
+ *
+ * 主题、深浅、语言三个控件已迁入设置面板 —— 标题栏在窄屏下只有
+ * 一行的宽度，控件越多标题被挤得越短。这里只保留两个入口：
+ * 打开设置、展开收起。
+ */
 import { computed } from 'vue';
-import { NSelect, NButton, NTag } from 'naive-ui';
 import { useUiStore } from '../../stores/ui-store';
-import { useTeleportTarget } from '../composables/use-teleport-target';
 import { t } from '../../i18n';
-import type { ThemeId } from '../theme/tokens';
-import type { ModeSetting } from '../../stores/ui-store';
+import { NButton, NIcon } from 'naive-ui';
+import { ICONS } from '../icons';
 
 defineProps<{ subtitle?: string }>();
-const emit = defineEmits<{ close: [] }>();
 
 const ui = useUiStore();
-const to = useTeleportTarget();
 
-const themeOptions = computed(() =>
-  ui.themes.map((th) => ({
-    label: th.name[ui.lang] + (th.easterEgg ? ` · ${t('settings.easterEgg', ui.lang)}` : ''),
-    value: th.id,
-  })),
-);
-const modeOptions = computed<{ label: string; value: ModeSetting }[]>(() => [
-  { label: t('settings.mode.auto', ui.lang), value: 'auto' },
-  { label: t('settings.mode.light', ui.lang), value: 'light' },
-  { label: t('settings.mode.dark', ui.lang), value: 'dark' },
-]);
+const inSettings = computed(() => ui.destination.kind === 'settings');
 </script>
 
 <template>
-  <header class="bara-head flex items-center justify-between gap-3 px-4 py-2">
-    <div class="flex items-baseline gap-2 min-w-0">
-      <span class="bara-head__name font-bold whitespace-nowrap">
-        {{ t('app.title', ui.lang) }}
-      </span>
-      <span class="bara-head__sub truncate">{{ subtitle }}</span>
+  <header class="bara-head">
+    <div class="bara-head__left">
+      <span class="bara-head__name">{{ t('app.title', ui.lang) }}</span>
+      <span class="bara-head__sub">{{ subtitle }}</span>
     </div>
 
     <!--
-      主题切换入口在任何主题下都必须可见可点 —— 这是 cyberpunk 彩蛋主题
-      不保证可读性时保留的唯一底线（§8.7b）。
-      弹层必须绑 :to，否则会 teleport 出 Shadow DOM 丢失样式。
+      设置入口在任何主题下都必须可见可点 —— cyberpunk 彩蛋主题不保证
+      可读性，能进设置改回来是保留的唯一底线（§8.7b）。
     -->
-    <div class="flex items-center gap-2 flex-none">
-      <NTag v-if="ui.theme.easterEgg" size="small" type="warning" :bordered="false">
-        {{ t('settings.easterEgg', ui.lang) }}
-      </NTag>
-      <NSelect
-        :value="ui.themeId"
-        :options="themeOptions"
-        :to="to"
+    <div class="bara-head__actions">
+      <NButton
         size="small"
-        class="w-32"
-        @update:value="(v: ThemeId) => ui.setTheme(v)"
-      />
-      <NSelect
-        :value="ui.modeSetting"
-        :options="modeOptions"
-        :to="to"
-        size="small"
-        class="w-24"
-        @update:value="(v: ModeSetting) => ui.setMode(v)"
-      />
-      <NButton size="small" quaternary @click="ui.toggleLang()">
-        {{ ui.lang === 'zh-CN' ? '中' : 'EN' }}
+        :type="inSettings ? 'primary' : 'default'"
+        :quaternary="!inSettings"
+        :title="t('settings.title', ui.lang)"
+        @click="inSettings ? ui.closeSettings() : ui.openSettings()"
+      >
+        <template #icon><NIcon :component="ICONS.settings" /></template>
       </NButton>
-      <NButton size="small" quaternary @click="emit('close')">✕</NButton>
+      <!-- 展开/收起：这是「多个部位可展开」中的一处，另一处在坞上 -->
+      <NButton
+        size="small"
+        quaternary
+        :title="t(ui.expanded ? 'shell.collapse' : 'shell.expand', ui.lang)"
+        @click="ui.toggleExpanded()"
+      >
+        <template #icon>
+          <NIcon :component="ui.expanded ? ICONS.expand : ICONS.collapse" />
+        </template>
+      </NButton>
     </div>
   </header>
 </template>
 
 <style scoped>
 .bara-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bara-space-4);
+  padding: var(--bara-space-3) var(--bara-space-5);
+  flex: none;
   border-bottom: var(--bara-border-width) solid var(--bara-color-divider);
   background: var(--bara-color-surface);
 }
-.bara-head__name { color: var(--bara-color-accent); }
+.bara-head__left {
+  display: flex;
+  align-items: baseline;
+  gap: var(--bara-space-3);
+  min-width: 0;
+}
+.bara-head__name {
+  color: var(--bara-color-accent);
+  font-weight: var(--bara-font-weight-bold);
+  white-space: nowrap;
+}
 .bara-head__sub {
   font-size: var(--bara-font-size-sm);
   color: var(--bara-color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bara-head__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--bara-space-2);
+  flex: none;
 }
 </style>

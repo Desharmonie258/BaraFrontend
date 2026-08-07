@@ -4,6 +4,11 @@
  * 存储形态（开发文档 §3.2）：`{属性名}:{数值}` 分号分隔，存于单列。
  *   例：`力量:19; 敏捷:64; 体质:50`
  *
+ * 特有属性可再带第三段「关联的基础属性」：`{名}:{值}:{关联属性}`
+ *   例：`野猪狩猎:7:敏捷`
+ * 第三段可省略，因此旧数据无需迁移。d20 与百分骰族要求填写，
+ * 骰池族不使用（见 domain/attribute-presets）。
+ *
  * 设计约束：
  * - 分隔符容错：分号后可有可无空格，末尾分号可有可无。
  * - 数值非法时**不静默丢弃**，保留原文并标记，避免吞掉用户数据。
@@ -16,6 +21,8 @@ export interface AttributeEntry {
   name: string;
   /** 解析成功的数值；解析失败时为 null */
   value: number | null;
+  /** 关联的基础属性名。未填写时为 undefined。 */
+  key?: string;
   /** 解析失败时保留的原始文本 */
   raw?: string;
 }
@@ -50,14 +57,19 @@ export function parse(packed: string | null | undefined): AttributeEntry[] {
     }
 
     const name = seg.slice(0, sep).trim();
-    const valueText = seg.slice(sep + 1).trim();
+    const rest = seg.slice(sep + 1);
     if (!name) continue;
+
+    // 第二个冒号之后是关联的基础属性，可省略
+    const sep2 = rest.indexOf(':');
+    const valueText = (sep2 < 0 ? rest : rest.slice(0, sep2)).trim();
+    const key = sep2 < 0 ? undefined : rest.slice(sep2 + 1).trim() || undefined;
 
     const num = Number(valueText);
     const entry: AttributeEntry =
       valueText !== '' && Number.isFinite(num)
-        ? { name, value: num }
-        : { name, value: null, raw: valueText };
+        ? { name, value: num, key }
+        : { name, value: null, key, raw: valueText };
 
     const existing = index.get(name);
     if (existing !== undefined) {
@@ -73,7 +85,11 @@ export function parse(packed: string | null | undefined): AttributeEntry[] {
 /** 序列化为打包串。顺序即数组顺序。 */
 export function serialize(entries: AttributeEntry[]): string {
   return entries
-    .map((e) => `${e.name}:${e.value === null ? (e.raw ?? '') : e.value}`)
+    .map((e) => {
+      const v = e.value === null ? (e.raw ?? '') : e.value;
+      // 没有关联属性时不写第三段，避免在旧数据上凭空加出一个空冒号
+      return e.key ? `${e.name}:${v}:${e.key}` : `${e.name}:${v}`;
+    })
     .join('; ');
 }
 
@@ -117,7 +133,8 @@ export function applyDeltas(
     if (current === null) continue; // 无法解析的项不参与运算，保持原样
 
     const raw = d.set !== undefined ? d.set : current + (d.delta ?? 0);
-    next[i] = { name: d.name, value: clamp(raw, range) };
+    // 保住 key —— 改数值不该把关联属性抹掉
+    next[i] = { name: d.name, value: clamp(raw, range), key: next[i].key };
   }
   return next;
 }

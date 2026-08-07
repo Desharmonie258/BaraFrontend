@@ -1,8 +1,8 @@
 {
   "id": "7c1e4a92-3b8d-4f60-a5d1-9e2f6b0c84af",
   "name": "蔷薇前端-实时修改",
-  "content": "import 'http://localhost:5500/dist/BaraFrontend/index.js'",
-  "info": "蔷薇前端 BaraFrontend —— 本地实时调试用。\n\n需先运行 pnpm watch，并确保酒馆助手的『实时监听-允许监听』开关已启用。\n\n依赖：SP·数据库 VII（SQLite 模式）。",
+  "content": "import 'http://localhost:5500/_BaraFrontend-repo/dist/BaraFrontend/index.js'",
+  "info": "蔷薇前端 BaraFrontend —— 本地实时调试用。\n\n【路径说明】\n上面的 URL 前缀取决于你的静态文件服务根目录。VS Code Live Server 以工作区根为准：\n- 工作区打开的是本仓库 → 改为 /dist/BaraFrontend/index.js\n- 工作区打开的是上级目录 → 保留 /_BaraFrontend-repo/ 前缀\n\n【运行前提】\n1. pnpm build 或 pnpm watch 生成 dist/\n2. 启动静态服务（Live Server 默认 5500 端口）\n3. 启用酒馆助手的『实时监听-允许监听』开关\n   （watch 的 socket.io 在 6621 端口推送更新事件，与 5500 的文件服务是两回事）\n\n依赖：SP·数据库 VII（SQLite 模式）。",
   "buttons": [
     {
       "name": "蔷薇前端",

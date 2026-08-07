@@ -42,6 +42,30 @@ export interface WriteFailure {
 }
 
 interface DbApi {
+  // ── 读：只读快照。本项目的唯一读取入口（见 snapshot-repo）──
+  getCurrentData?: () => unknown;
+  exportTableAsJson?: () => unknown;
+
+  // ── 写：CRUD。数据库本体把只读快照与写入分成两套接口 ──
+  updateCell?: (
+    tableName: string,
+    rowIndex: number,
+    colIdentifier: string | number,
+    value: unknown,
+  ) => Promise<boolean>;
+  insertRow?: (tableName: string, data: Record<string, unknown>) => Promise<number>;
+  deleteRow?: (tableName: string, rowIndex: number) => Promise<boolean>;
+
+  refreshDataAndWorldbook?: () => Promise<boolean>;
+  registerTableUpdateCallback?: (cb: (data: unknown) => void) => void;
+  unregisterTableUpdateCallback?: (cb: (data: unknown) => void) => void;
+  getTableTemplate?: () => unknown;
+  importTemplateFromData?: (
+    data: unknown,
+    options?: { scope?: 'global' | 'chat'; presetName?: string },
+  ) => Promise<{ success: boolean; message: string }>;
+
+  // ── SQL：本项目不再使用，仅保留类型以便将来需要时可用 ──
   querySql?: (sql: string, params?: unknown[]) => SqlQueryResult | null;
   queryTableRows?: (options: Record<string, unknown>) => SqlQueryResult | null;
   executeSqlBatch?: (options: {
@@ -50,13 +74,6 @@ interface DbApi {
     silent?: boolean;
   }) => Promise<SqlBatchResult>;
   getLastSqlApiError?: () => SqlApiError | null;
-  refreshDataAndWorldbook?: () => Promise<boolean>;
-  registerTableUpdateCallback?: (cb: (data: unknown) => void) => void;
-  unregisterTableUpdateCallback?: (cb: (data: unknown) => void) => void;
-  importTemplateFromData?: (
-    data: unknown,
-    options?: { scope?: 'global' | 'chat'; presetName?: string },
-  ) => Promise<{ success: boolean; message: string }>;
 }
 
 /** 逐级回退查找 API 宿主。每次调用都重新探测，不缓存。 */
@@ -114,6 +131,188 @@ export function lastError(): SqlApiError | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * 读取只读快照 —— 本项目的读取入口。
+ *
+ * 优先 `getCurrentData()`，缺失时回退 `exportTableAsJson()`。数据库本体
+ * 当前把只读快照暴露在后者，但前者是更明确的语义，两个都探测更稳。
+ *
+ * 快照不依赖 SQLite 模式与 runtime ready —— 这正是不走 SQL 的主要原因。
+ */
+export function readSnapshot(): Record<string, any> | null {
+  const api = resolveApi();
+  if (!api) return null;
+  for (const fn of [api.getCurrentData, api.exportTableAsJson]) {
+    if (typeof fn !== 'function') continue;
+    try {
+      const data = fn.call(api);
+      if (data && typeof data === 'object') return data as Record<string, any>;
+    } catch (e) {
+      console.warn('[蔷薇前端] 读取表格快照失败', e);
+    }
+  }
+  return null;
+}
+
+/** 快照读取能力是否可用 */
+export function canRead(): boolean {
+  const api = resolveApi();
+  return !!(
+    api &&
+    (typeof api.getCurrentData === 'function' || typeof api.exportTableAsJson === 'function')
+  );
+}
+
+/** CRUD 写入能力是否可用 */
+export function canWrite(): boolean {
+  const api = resolveApi();
+  return !!(
+    api &&
+    typeof api.updateCell === 'function' &&
+    typeof api.insertRow === 'function' &&
+    typeof api.deleteRow === 'function'
+  );
+}
+
+/**
+ * 更新单元格。
+ *
+ * 行号沿用数据库本体的口径：**0 为表头，1 为第一行数据**。
+ * 列用展示名（中文表头），不是 DDL 的物理列名。
+ */
+export async function updateCell(
+  tableName: string,
+  rowIndex: number,
+  columnLabel: string,
+  value: unknown,
+): Promise<{ ok: true } | { ok: false; failure: WriteFailure }> {
+  const api = resolveApi();
+  if (!api || typeof api.updateCell !== 'function') {
+    return { ok: false, failure: { kind: 'runtime_not_ready', message: '数据库写入接口不可用', raw: null } };
+  }
+  try {
+    const ok = await api.updateCell(tableName, rowIndex, columnLabel, value);
+    if (ok) return { ok: true };
+    return { ok: false, failure: { kind: 'unknown', message: '写入被拒绝', raw: lastError() } };
+  } catch (e) {
+    return {
+      ok: false,
+      failure: {
+        kind: 'unknown',
+        message: e instanceof Error ? e.message : String(e),
+        raw: lastError(),
+      },
+    };
+  }
+}
+
+/** 表尾追加一行。data 的键是展示名。成功返回新行号，失败返回 -1。 */
+export async function insertRow(
+  tableName: string,
+  data: Record<string, unknown>,
+): Promise<number> {
+  const api = resolveApi();
+  if (!api || typeof api.insertRow !== 'function') return -1;
+  try {
+    return await api.insertRow(tableName, data);
+  } catch (e) {
+    console.warn('[蔷薇前端] 插入行失败', e);
+    return -1;
+  }
+}
+
+/** 删除行。rowIndex 为 0（表头）时会被拒绝。 */
+export async function deleteRow(tableName: string, rowIndex: number): Promise<boolean> {
+  const api = resolveApi();
+  if (!api || typeof api.deleteRow !== 'function') return false;
+  try {
+    return await api.deleteRow(tableName, rowIndex);
+  } catch (e) {
+    console.warn('[蔷薇前端] 删除行失败', e);
+    return false;
+  }
+}
+
+/** 取当前生效的表格模板 */
+export function getTableTemplate(): Record<string, any> | null {
+  const api = resolveApi();
+  if (!api || typeof api.getTableTemplate !== 'function') return null;
+  try {
+    const tpl = api.getTableTemplate();
+    return tpl && typeof tpl === 'object' ? (tpl as Record<string, any>) : null;
+  } catch (e) {
+    console.warn('[蔷薇前端] 读取表格模板失败', e);
+    return null;
+  }
+}
+
+/**
+ * 写回表格模板。
+ *
+ * **这是本项目风险最高的写操作** —— 单元格写坏只影响一格，模板写坏整套
+ * 表结构都要重导。因此：
+ * - 只接受对象形态的模板，其余一律拒绝而非「尽力而为」；
+ * - 默认 `scope: 'chat'`，只改当前聊天的模板副本，不动全局模板 ——
+ *   不同聊天可以用不同规则族；
+ * - 结果如实返回，不把失败吞成成功。
+ *
+ * 用法参照骰子系统 `updateTemplateForActivePreset` 的写回段。
+ */
+export async function importTemplate(
+  template: Record<string, any>,
+  options: { scope?: 'global' | 'chat'; presetName?: string } = {},
+): Promise<{ success: boolean; message: string }> {
+  const api = resolveApi();
+  if (!api || typeof api.importTemplateFromData !== 'function') {
+    return { success: false, message: 'importTemplateFromData 不可用' };
+  }
+  if (!template || typeof template !== 'object' || Array.isArray(template)) {
+    return { success: false, message: '模板不是对象形态，拒绝写入' };
+  }
+  try {
+    const res = await api.importTemplateFromData(template, { scope: 'chat', ...options });
+    return {
+      success: !!res?.success,
+      message: String(res?.message ?? ''),
+    };
+  } catch (e) {
+    console.warn('[蔷薇前端] 写回表格模板失败', e);
+    return { success: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * 把查询结果统一成「按请求列顺序排列的二维数组」。
+ *
+ * 上游返回的行可能是位置数组，也可能是按列名键控的对象 —— 两种形态
+ * 都出现过，且没有文档承诺。直接按下标取值在对象形态下会全取到
+ * undefined，表现为「行数对但每格都空」，很难一眼看出。
+ *
+ * 因此所有读取路径都必须经过本函数，不要自己解 res.rows。
+ */
+export function toMatrix(
+  res: SqlQueryResult | null,
+  columns: string[],
+): unknown[][] {
+  if (!res?.rows || !Array.isArray(res.rows)) return [];
+  return res.rows.map((row) => {
+    if (Array.isArray(row)) return row;
+    if (row && typeof row === 'object') {
+      const obj = row as Record<string, unknown>;
+      // 优先按请求的列名取；列名对不上时回退到对象自身的值顺序
+      const byName = columns.map((c) => obj[c]);
+      return byName.some((v) => v !== undefined) ? byName : Object.values(obj);
+    }
+    return [row];
+  });
+}
+
+/** 取单个标量结果（COUNT 一类） */
+export function scalar(res: SqlQueryResult | null): unknown {
+  const m = toMatrix(res, []);
+  return m.length > 0 ? m[0][0] : undefined;
 }
 
 /** 自由只读查询。runtime 未就绪或失败时返回 null。 */
@@ -213,18 +412,3 @@ export function onTableUpdate(cb: (data: unknown) => void): () => void {
   };
 }
 
-/** 导入表格模板（仅作用于当前聊天，不污染用户全局模板库） */
-export async function importTemplate(
-  data: unknown,
-  presetName: string,
-): Promise<{ success: boolean; message: string }> {
-  const api = resolveApi();
-  if (!api || typeof api.importTemplateFromData !== 'function') {
-    return { success: false, message: '数据库未就绪' };
-  }
-  try {
-    return await api.importTemplateFromData(data, { scope: 'chat', presetName });
-  } catch (e) {
-    return { success: false, message: e instanceof Error ? e.message : String(e) };
-  }
-}

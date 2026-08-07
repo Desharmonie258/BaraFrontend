@@ -3,18 +3,16 @@
  *
  * 两条并行通路：
  *   语义令牌 ─┬→ themeOverrides   （Naive UI 组件消费）
- *             └→ 自有 CSS 变量     （自绘元素消费，如资源控件、角色卡）
+ *             └→ 自有 CSS 变量     （自绘元素消费）
  *
- * 15 个领域专属令牌在 Naive UI 中没有对应，只走后一条通路。
+ * 领域专属令牌（资源条、检定结果等级、增益减益）在 Naive UI 中没有对应，
+ * 只走后一条通路。
  */
 import type { GlobalThemeOverrides } from 'naive-ui';
 import type { SemanticColors, StyleTokens } from './tokens';
 import { CONSTANTS } from './tokens';
 
-export function toNaiveOverrides(
-  c: SemanticColors,
-  s: StyleTokens,
-): GlobalThemeOverrides {
+export function toNaiveOverrides(c: SemanticColors, s: StyleTokens): GlobalThemeOverrides {
   return {
     common: {
       bodyColor: c.bg,
@@ -40,13 +38,9 @@ export function toNaiveOverrides(
       primaryColorSuppl: c.primaryHover,
 
       successColor: c.success,
-      successColorHover: c.success,
       warningColor: c.warning,
-      warningColorHover: c.warning,
       errorColor: c.danger,
-      errorColorHover: c.danger,
       infoColor: c.info,
-      infoColorHover: c.info,
 
       hoverColor: c.hover,
 
@@ -65,11 +59,14 @@ export function toNaiveOverrides(
       boxShadow2: s.shadow.md,
       boxShadow3: s.shadow.lg,
     },
-    // 资源条要改填充色，通用变量覆盖不到 —— 走组件段而非行内样式。
-    // 行内样式会绕过主题切换。
-    Progress: {
-      fillColor: c.resourceFill,
-      railColor: c.resourceTrack,
+    Card: {
+      colorModal: c.surface,
+      titleFontSizeSmall: CONSTANTS.fontSize.md,
+    },
+    Collapse: {
+      titleTextColor: c.text,
+      dividerColor: c.divider,
+      itemMargin: '0',
     },
   };
 }

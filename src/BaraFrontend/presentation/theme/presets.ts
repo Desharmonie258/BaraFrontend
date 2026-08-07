@@ -1,5 +1,5 @@
 /**
- * 四套内置主题 × 深浅两版 = 八个变体（开发文档 §8.7b）
+ * 十二套内置主题 × 深浅两版 = 二十四个变体（开发文档 §8.7b）
  *
  * 配色方向参考 daisyUI 的同名主题，色值为本项目自行取定 —— daisyUI 的
  * 配色是为其自身组件体系调的，直接搬到 Naive UI 的变量体系上未必协调。
@@ -152,9 +152,8 @@ export const THEMES: ThemePreset[] = [
     id: 'cyberpunk',
     name: { 'zh-CN': '赛博', 'en-US': 'Cyberpunk' },
     nativeMode: 'light',
-    // 彩蛋主题：刺眼即是设计目标，不受对比度门槛约束。
-    // 唯一底线是主题切换入口在该主题下仍须可见可点。
-    easterEgg: true,
+    // 高饱和是设计目标，不追求对比度舒适 —— 但仍须保证主题切换入口
+    // 在该主题下可见可点，否则用户切进来就出不去了。
     light: {
       palette: {
         bg: '#f7f13a', surface: '#fdf85e', elevated: '#fffb8a',
@@ -189,6 +188,342 @@ export const THEMES: ThemePreset[] = [
           md: '0 0 12px rgba(0,229,255,0.55)',
           lg: '0 0 28px rgba(255,47,185,0.6)',
           glow: '0 0 20px rgba(0,229,255,0.85)',
+        },
+      },
+    },
+  },
+  {
+    id: 'caramellatte',
+    name: { 'zh-CN': '焦糖拿铁', 'en-US': 'Caramel Latte' },
+    nativeMode: 'light',
+    light: {
+      // 奶油底 + 焦糖褐。暖而不艳，长时间阅读不累眼。
+      palette: {
+        bg: '#f8efe2', surface: '#fffaf3', elevated: '#ffffff',
+        ink: '#2a1c10', inkMuted: '#7a6350', line: '#e0cdb4',
+        primary: '#b5651d', accent: '#8a4b2a',
+        success: '#5b7f43', warning: '#c98a1e', danger: '#b03a2e', info: '#4a6f8a',
+      },
+      style: {
+        radius: roundRadius, fontFamily: SANS, fontFamilyMono: MONO,
+        shadow: {
+          sm: '0 1px 2px rgba(80,55,30,0.10)',
+          md: '0 4px 10px rgba(80,55,30,0.13)',
+          lg: '0 10px 28px rgba(80,55,30,0.16)',
+          glow: noGlow,
+        },
+      },
+    },
+    dark: {
+      // 深烘焙底。焦糖色须提亮，否则在暗底上会糊成一团分不出层次的棕。
+      palette: {
+        bg: '#171009', surface: '#221810', elevated: '#2f2116',
+        ink: '#f2e5d5', inkMuted: '#b09a83', line: '#3d2c1d',
+        primary: '#d99551', accent: '#e8b87f',
+        success: '#7fa15f', warning: '#e0a63c', danger: '#cf5f4f', info: '#6f97b5',
+      },
+      style: {
+        radius: roundRadius, fontFamily: SANS, fontFamilyMono: MONO,
+        shadow: {
+          sm: '0 1px 3px rgba(0,0,0,0.55)',
+          md: '0 4px 12px rgba(0,0,0,0.6)',
+          lg: '0 10px 30px rgba(0,0,0,0.65)',
+          glow: noGlow,
+        },
+      },
+    },
+  },
+  {
+    id: 'forest',
+    name: { 'zh-CN': '林地', 'en-US': 'Forest' },
+    nativeMode: 'dark',
+    dark: {
+      // 近黑的墨绿底 + 高饱和林绿。原生形态。
+      palette: {
+        bg: '#0f1411', surface: '#161d18', elevated: '#1f2922',
+        ink: '#e3ede5', inkMuted: '#8fa396', line: '#2a3830',
+        primary: '#1eb854', accent: '#1db8ab',
+        success: '#3fcf6b', warning: '#d2a53c', danger: '#c25248', info: '#4f96c4',
+      },
+      style: {
+        radius: softRadius, fontFamily: SANS, fontFamilyMono: MONO,
+        shadow: {
+          sm: '0 1px 3px rgba(0,0,0,0.55)',
+          md: '0 4px 12px rgba(0,0,0,0.6)',
+          lg: '0 10px 30px rgba(0,0,0,0.65)',
+          glow: noGlow,
+        },
+      },
+    },
+    light: {
+      // 浅版：苔白底，绿色压暗提饱和 —— 亮林绿在白底上几乎读不出来。
+      palette: {
+        bg: '#f0f5f1', surface: '#fbfdfb', elevated: '#ffffff',
+        ink: '#12211a', inkMuted: '#5a6f61', line: '#cbdcd1',
+        primary: '#177f3c', accent: '#127f76',
+        success: '#2e8b4f', warning: '#a8791f', danger: '#a63f36', info: '#376f94',
+      },
+      style: {
+        radius: softRadius, fontFamily: SANS, fontFamilyMono: MONO,
+        shadow: {
+          sm: '0 1px 2px rgba(20,50,35,0.09)',
+          md: '0 4px 10px rgba(20,50,35,0.12)',
+          lg: '0 10px 28px rgba(20,50,35,0.15)',
+          glow: noGlow,
+        },
+      },
+    },
+  },
+  {
+    id: 'synthwave',
+    name: { 'zh-CN': '合成波', 'en-US': 'Synthwave' },
+    nativeMode: 'dark',
+    dark: {
+      // 靛紫夜空 + 霓虹粉青。原生形态，辉光是这套配色的组成部分。
+      palette: {
+        bg: '#1a103d', surface: '#241553', elevated: '#2f1c68',
+        ink: '#f5e9ff', inkMuted: '#a794cf', line: '#3d2782',
+        primary: '#e779c1', accent: '#58c7f3',
+        success: '#3ddc97', warning: '#f3cc30', danger: '#ff5c72', info: '#8b7cf6',
+      },
+      style: {
+        radius: softRadius, fontFamily: SANS, fontFamilyMono: MONO,
+        shadow: {
+          sm: '0 0 4px rgba(231,121,193,0.35)',
+          md: '0 0 14px rgba(231,121,193,0.4)',
+          lg: '0 0 30px rgba(88,199,243,0.45)',
+          glow: '0 0 18px rgba(231,121,193,0.7)',
+        },
+      },
+    },
+    light: {
+      // 浅版：淡紫底。霓虹色必须压暗，否则白底上等于没有字；
+      // 辉光同时收弱 —— 亮底上的辉光只会让文字发糊。
+      palette: {
+        bg: '#f4f0fb', surface: '#fcfaff', elevated: '#ffffff',
+        ink: '#1f1140', inkMuted: '#6b5b93', line: '#ddd2f0',
+        primary: '#b03a8c', accent: '#1b7fa8',
+        success: '#1f8f63', warning: '#a8811a', danger: '#c0384c', info: '#5a4bc4',
+      },
+      style: {
+        radius: softRadius, fontFamily: SANS, fontFamilyMono: MONO,
+        shadow: {
+          sm: '0 1px 2px rgba(45,25,90,0.10)',
+          md: '0 4px 12px rgba(45,25,90,0.14)',
+          lg: '0 10px 30px rgba(45,25,90,0.18)',
+          glow: '0 0 12px rgba(176,58,140,0.35)',
+        },
+      },
+    },
+  },
+  {
+    id: 'autumn',
+    name: { 'zh-CN': '深秋', 'en-US': 'Autumn' },
+    nativeMode: 'light',
+    light: {
+      // 中性灰底 + 酒红。原生形态，色调克制偏正式。
+      palette: {
+        bg: '#f1f0ee', surface: '#fbfaf9', elevated: '#ffffff',
+        ink: '#1f1a18', inkMuted: '#6d635d', line: '#d8d3cd',
+        primary: '#8c0327', accent: '#d59b6a',
+        success: '#4f7a45', warning: '#b8791d', danger: '#c0392b', info: '#4a6b8a',
+      },
+      style: {
+        radius: softRadius, fontFamily: SERIF, fontFamilyMono: MONO,
+        shadow: {
+          sm: '0 1px 2px rgba(40,30,25,0.09)',
+          md: '0 4px 10px rgba(40,30,25,0.12)',
+          lg: '0 10px 28px rgba(40,30,25,0.15)',
+          glow: noGlow,
+        },
+      },
+    },
+    dark: {
+      // 深棕灰底。酒红提亮成砖红 —— 暗底上的深红等同于黑。
+      palette: {
+        bg: '#14100f', surface: '#1e1917', elevated: '#2a2320',
+        ink: '#ece5e0', inkMuted: '#a2948c', line: '#382f2b',
+        primary: '#d1495b', accent: '#e0a878',
+        success: '#6f9e5a', warning: '#d9a441', danger: '#d4574a', info: '#6d90b0',
+      },
+      style: {
+        radius: softRadius, fontFamily: SERIF, fontFamilyMono: MONO,
+        shadow: {
+          sm: '0 1px 3px rgba(0,0,0,0.55)',
+          md: '0 4px 12px rgba(0,0,0,0.6)',
+          lg: '0 10px 30px rgba(0,0,0,0.65)',
+          glow: noGlow,
+        },
+      },
+    },
+  },
+  {
+    id: 'sorbet',
+    name: { 'zh-CN': '雪葩', 'en-US': 'Sorbet' },
+    nativeMode: 'light',
+    light: {
+      // 珊瑚 → 蜜桃 → 嫩绿 → 薄荷的粉彩渐层。原生形态。
+      // 参考图里四色明度都很高，直接拿来当正文色会读不出来，
+      // 因此正文另取深栗色，粉彩色只用在主色与强调上。
+      palette: {
+        bg: '#fff5f2', surface: '#fffaf8', elevated: '#ffffff',
+        ink: '#3a2a2e', inkMuted: '#8a6b6f', line: '#f6dcd4',
+        primary: '#d94f6e', accent: '#2f9b76',
+        success: '#3f8f63', warning: '#c2872c', danger: '#c33b52', info: '#4f7fa5',
+      },
+      style: {
+        radius: roundRadius, fontFamily: SANS, fontFamilyMono: MONO,
+        shadow: {
+          sm: '0 1px 2px rgba(140,80,80,0.10)',
+          md: '0 4px 10px rgba(140,80,80,0.13)',
+          lg: '0 10px 28px rgba(140,80,80,0.16)',
+          glow: noGlow,
+        },
+      },
+    },
+    dark: {
+      // 深版：暗栗底。此时粉彩色反过来成了最亮的一层，可以直接上原色。
+      palette: {
+        bg: '#221a1d', surface: '#2e2427', elevated: '#3a2e31',
+        ink: '#ffeae5', inkMuted: '#c2a29d', line: '#453538',
+        primary: '#ff9999', accent: '#a8e6c8',
+        success: '#7fce9f', warning: '#e6c07a', danger: '#f07a8c', info: '#8fb8d8',
+      },
+      style: {
+        radius: roundRadius, fontFamily: SANS, fontFamilyMono: MONO,
+        shadow: {
+          sm: '0 1px 3px rgba(0,0,0,0.5)',
+          md: '0 4px 12px rgba(0,0,0,0.55)',
+          lg: '0 10px 30px rgba(0,0,0,0.6)',
+          glow: noGlow,
+        },
+      },
+    },
+  },
+  {
+    id: 'moorland',
+    name: { 'zh-CN': '荒原', 'en-US': 'Moorland' },
+    nativeMode: 'dark',
+    dark: {
+      // 暗海军蓝 + 石板灰蓝 + 鼠尾草绿 + 米色。原生形态，色调沉静。
+      // 正文用米色而非纯白：纯白在这种偏蓝的底上会显得发冷、割裂。
+      palette: {
+        bg: '#232936', surface: '#2e3444', elevated: '#3a4354',
+        ink: '#fff8dc', inkMuted: '#a3ac9d', line: '#435768',
+        primary: '#a3b285', accent: '#7fa8c9',
+        success: '#8fbf7a', warning: '#d9bb6a', danger: '#c9707a', info: '#6f9ec4',
+      },
+      style: {
+        radius: softRadius, fontFamily: SANS, fontFamilyMono: MONO,
+        shadow: {
+          sm: '0 1px 3px rgba(0,0,0,0.5)',
+          md: '0 4px 12px rgba(0,0,0,0.55)',
+          lg: '0 10px 30px rgba(0,0,0,0.6)',
+          glow: noGlow,
+        },
+      },
+    },
+    light: {
+      // 浅版：米色升为底，海军蓝降为强调。鼠尾草绿须压暗，
+      // 原色 #a3b285 在米底上对比度不足 2，等于没有字。
+      palette: {
+        bg: '#f4f2e6', surface: '#fbfaf3', elevated: '#ffffff',
+        ink: '#232936', inkMuted: '#5f6b5c', line: '#dbd7c3',
+        primary: '#5a7a3f', accent: '#3d5a75',
+        success: '#4a7d3c', warning: '#9d7a1c', danger: '#a8434e', info: '#3f6389',
+      },
+      style: {
+        radius: softRadius, fontFamily: SANS, fontFamilyMono: MONO,
+        shadow: {
+          sm: '0 1px 2px rgba(35,41,54,0.09)',
+          md: '0 4px 10px rgba(35,41,54,0.12)',
+          lg: '0 10px 28px rgba(35,41,54,0.15)',
+          glow: noGlow,
+        },
+      },
+    },
+  },
+  {
+    id: 'nord',
+    name: { 'zh-CN': '诺德', 'en-US': 'Nord' },
+    nativeMode: 'dark',
+    dark: {
+      // Nord 的 Polar Night 作底、Snow Storm 作字、Frost 作主色、Aurora 作语义色。
+      // 这是该配色本身的分工，照搬即可。
+      palette: {
+        bg: '#2e3440', surface: '#3b4252', elevated: '#434c5e',
+        ink: '#eceff4', inkMuted: '#aab3c2', line: '#4c566a',
+        primary: '#88c0d0', accent: '#81a1c1',
+        success: '#a3be8c', warning: '#ebcb8b', danger: '#bf616a', info: '#5e81ac',
+      },
+      style: {
+        radius: softRadius, fontFamily: SANS, fontFamilyMono: MONO,
+        shadow: {
+          sm: '0 1px 3px rgba(0,0,0,0.45)',
+          md: '0 4px 12px rgba(0,0,0,0.5)',
+          lg: '0 10px 30px rgba(0,0,0,0.55)',
+          glow: noGlow,
+        },
+      },
+    },
+    light: {
+      // 浅版：Snow Storm 翻上来作底，Frost 与 Aurora 一并压暗 ——
+      // 这两组本来就是为暗底调的，直接用在白底上全部糊掉。
+      palette: {
+        bg: '#eceff4', surface: '#f7f9fc', elevated: '#ffffff',
+        ink: '#2e3440', inkMuted: '#5b6779', line: '#d8dee9',
+        primary: '#3f7f96', accent: '#4c6f96',
+        success: '#5f7d4a', warning: '#9a7420', danger: '#a2454e', info: '#3d5f85',
+      },
+      style: {
+        radius: softRadius, fontFamily: SANS, fontFamilyMono: MONO,
+        shadow: {
+          sm: '0 1px 2px rgba(46,52,64,0.09)',
+          md: '0 4px 10px rgba(46,52,64,0.12)',
+          lg: '0 10px 28px rgba(46,52,64,0.15)',
+          glow: noGlow,
+        },
+      },
+    },
+  },
+  {
+    id: 'lemonade',
+    name: { 'zh-CN': '柠檬汽水', 'en-US': 'Lemonade' },
+    nativeMode: 'light',
+    light: {
+      // 淡柠底 + 草绿。原生形态。
+      // 强调色取橄榄而非参考图里的亮黄 —— 亮黄在淡黄底上对比度不到 1.5。
+      palette: {
+        bg: '#f8fbe8', surface: '#fdfef5', elevated: '#ffffff',
+        ink: '#26300d', inkMuted: '#63713c', line: '#dfe8bd',
+        primary: '#4a8c03', accent: '#7d6d05',
+        success: '#3f8f2e', warning: '#9d7818', danger: '#a8382c', info: '#42688a',
+      },
+      style: {
+        radius: softRadius, fontFamily: SANS, fontFamilyMono: MONO,
+        shadow: {
+          sm: '0 1px 2px rgba(60,75,20,0.09)',
+          md: '0 4px 10px rgba(60,75,20,0.12)',
+          lg: '0 10px 28px rgba(60,75,20,0.15)',
+          glow: noGlow,
+        },
+      },
+    },
+    dark: {
+      // 深版：橄榄暗底。这时亮黄终于用得上，直接作强调色。
+      palette: {
+        bg: '#14180a', surface: '#1e2410', elevated: '#2a3118',
+        ink: '#eef5da', inkMuted: '#a5b382', line: '#333d1c',
+        primary: '#8fcf3a', accent: '#e9e92e',
+        success: '#7cc44f', warning: '#d9bb3c', danger: '#d4574a', info: '#6d9ab8',
+      },
+      style: {
+        radius: softRadius, fontFamily: SANS, fontFamilyMono: MONO,
+        shadow: {
+          sm: '0 1px 3px rgba(0,0,0,0.5)',
+          md: '0 4px 12px rgba(0,0,0,0.55)',
+          lg: '0 10px 30px rgba(0,0,0,0.6)',
+          glow: noGlow,
         },
       },
     },
