@@ -14,8 +14,8 @@ import { useUiStore } from '../../stores/ui-store';
 import { useSchemaStore } from '../../stores/schema-store';
 import { canRead } from '../../data/db-gateway';
 import {
-  readProtagonist, readTrackedCharacters, readSupplyCounts,
-  type CharacterVM, type SupplyCounts,
+  readProtagonist, readTrackedCharacters, readSupplyCounts, readCapabilities,
+  type CharacterVM, type SupplyCounts, type CharacterCapabilities,
 } from '../../data/repositories/character-repo';
 import { t } from '../../i18n';
 import {
@@ -39,6 +39,18 @@ const tracked = ref<CharacterVM[]>([]);
 const supplies = ref<SupplyCounts>({ items: 0, equipment: 0 });
 const notReady = ref(false);
 
+/**
+ * 各面板依赖的表在当前模板里存不存在。
+ *
+ * 顶部注释说「空面板显示占位而非整块隐藏，否则布局会随数据增减跳动」——
+ * 那条针对的是**表里没数据**。表**根本不存在**是另一回事：它在这份模板下
+ * 恒定为假，不会跳动，而一块永远不会有内容的面板留在那里只是空壳。
+ * 用别的数据库模板的用户看到的正是这个（如小剧场3.3 没有任何角色表）。
+ */
+const caps = ref<CharacterCapabilities>({
+  protagonist: true, characters: true, supplies: true,
+});
+
 const suggestions = ref<SuggestionVM[]>([]);
 const sendable = ref(true);
 /** 发送结果提示。发送是外发动作，必须给出明确回执。 */
@@ -61,6 +73,11 @@ const visibleChars = computed(() => {
 
 const presentCount = computed(() => tracked.value.filter((c) => c.present).length);
 
+/** 面板全不适用。加载中不算 —— 那时 caps 还没读出来，会误判成整页无内容 */
+const noPanels = computed(
+  () => schema.loaded && !caps.value.protagonist && !caps.value.characters && !caps.value.supplies,
+);
+
 function load(): void {
   if (!canRead()) {
     notReady.value = true;
@@ -69,6 +86,7 @@ function load(): void {
     return;
   }
   notReady.value = false;
+  caps.value = readCapabilities();
   protagonist.value = readProtagonist();
   tracked.value = readTrackedCharacters();
   supplies.value = readSupplyCounts();
@@ -218,8 +236,22 @@ function onRoll(c: CharacterVM, attr: string, value: number, modifier?: number |
       @roll-attribute="(c, a, v, m) => onRoll(c, a, v, m)"
     />
 
-    <div class="bara-dash">
-      <NCard :title="t('dashboard.protagonist', ui.lang)" size="small">
+    <!--
+      三个面板全不适用：说明原因并指路，绝不留空白页。
+      小剧场3.3 这类模板（社交媒体模拟，无任何角色表）走的就是这条。
+    -->
+    <NEmpty v-if="noPanels" size="small" :description="t('dashboard.unsupported', ui.lang)">
+      <template #extra>
+        <span class="bara-dash__hint">{{ t('dashboard.unsupported.hint', ui.lang) }}</span>
+      </template>
+    </NEmpty>
+
+    <div v-else class="bara-dash">
+      <NCard
+        v-if="!schema.loaded || caps.protagonist"
+        :title="t('dashboard.protagonist', ui.lang)"
+        size="small"
+      >
         <NSkeleton v-if="!schema.loaded" text :repeat="3" />
         <CharacterCard
           v-else-if="protagonist"
@@ -232,7 +264,7 @@ function onRoll(c: CharacterVM, attr: string, value: number, modifier?: number |
         <NEmpty v-else size="small" />
       </NCard>
 
-      <NCard size="small">
+      <NCard v-if="!schema.loaded || caps.characters" size="small">
         <!-- NCard 的 title 只收字符串，标题带计数时改用 header 插槽 -->
         <template #header>
           <span class="bara-dash__title">{{ t('dashboard.importantChars', ui.lang) }}</span>
@@ -263,7 +295,11 @@ function onRoll(c: CharacterVM, attr: string, value: number, modifier?: number |
         <NEmpty v-else size="small" :description="t('dashboard.empty.chars', ui.lang)" />
       </NCard>
 
-      <NCard :title="t('dashboard.supplies', ui.lang)" size="small">
+      <NCard
+        v-if="!schema.loaded || caps.supplies"
+        :title="t('dashboard.supplies', ui.lang)"
+        size="small"
+      >
         <div class="bara-dash__supplies">
           <NStatistic :label="t('dashboard.items', ui.lang)" :value="supplies.items" />
           <NStatistic :label="t('dashboard.equipment', ui.lang)" :value="supplies.equipment" />
@@ -283,6 +319,10 @@ function onRoll(c: CharacterVM, attr: string, value: number, modifier?: number |
   color: var(--bara-color-text-muted);
 }
 .bara-dash__suggest { margin-bottom: var(--bara-space-4); }
+.bara-dash__hint {
+  font-size: var(--bara-font-size-xs);
+  color: var(--bara-color-text-subtle);
+}
 
 .bara-dash {
   display: grid;

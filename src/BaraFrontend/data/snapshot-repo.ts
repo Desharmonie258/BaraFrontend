@@ -14,6 +14,8 @@
  * 骰子系统与 Caikis 状态栏都是这么做的。写入则走 CRUD 方法（见 db-gateway）。
  */
 import { readSnapshot } from './db-gateway';
+import { checkSheet, type SheetIssueKind } from '../domain/sheet-health';
+import { matchSheets, type SheetSpec, type MatchVia } from '../domain/sheet-binding';
 
 export interface SheetSnapshot {
   key: string;
@@ -125,6 +127,97 @@ export function findSheetByName(names: readonly string[]): SheetSnapshot | undef
     if (names.includes(sheet.name)) return sheet;
   }
   return undefined;
+}
+
+/**
+ * 按展示名查**全部**命中的表，保持模板定义的顺序。
+ *
+ * 有些模板把同一类内容拆成并列的多张表 —— 例如 YO 与瑟瑟灵感系同时有
+ * 「恋爱对象表」与「重要角色表」，两者定位相同，都是值得单独建档的角色。
+ * 这种情况下 `findSheetByName` 只取到其中一张，另一张的角色会整个消失，
+ * 而且取到哪张取决于快照的枚举顺序 —— 是一种很难察觉的数据缺失。
+ */
+export function findSheetsByName(names: readonly string[]): SheetSnapshot[] {
+  return [...getSnapshot().values()].filter((sheet) => names.includes(sheet.name));
+}
+
+export interface ResolvedSheet {
+  sheet: SheetSnapshot;
+  /** 靠哪条通道认出来的，供诊断面板说明「这张表是推测的」 */
+  via: MatchVia;
+}
+
+/**
+ * 按识别规格查表，走 key / 展示名 / 列名指纹三条通道（见 domain/sheet-binding）。
+ *
+ * 这是比 findSheetsByName 更全的入口：只按展示名匹配，会漏掉重制过 key
+ * 但改了表名的模板，也漏掉两者都不符、只能靠列结构辨认的自定义表。
+ */
+export function resolveSheets(spec: SheetSpec): ResolvedSheet[] {
+  const all = [...getSnapshot().values()];
+  const byKey = new Map(all.map((s) => [s.key, s]));
+  return matchSheets(spec, all).flatMap((m) => {
+    const sheet = byKey.get(m.key);
+    return sheet ? [{ sheet, via: m.via }] : [];
+  });
+}
+
+/** 取符合规格的第一张表。用于本就唯一的表（主角信息等）。 */
+export function resolveSheet(spec: SheetSpec): SheetSnapshot | undefined {
+  return resolveSheets(spec)[0]?.sheet;
+}
+
+export interface BindingReport {
+  /** 能力标识，与 domain/sheet-binding 里各 spec 的 id 一致 */
+  id: string;
+  matched: Array<{ name: string; via: MatchVia }>;
+}
+
+/**
+ * 各项能力认到了哪些表、是怎么认出来的。
+ *
+ * 供设置面板的「模板适配情况」展示 —— 用户能据此回答「为什么我这里
+ * 没有资源条」，而不必猜是坏了还是不支持。指纹命中要标注出来：
+ * 那是推测，可能推错。
+ */
+export function describeBindings(specs: readonly SheetSpec[]): BindingReport[] {
+  return specs.map((spec) => ({
+    id: spec.id,
+    matched: resolveSheets(spec).map(({ sheet, via }) => ({ name: sheet.name, via })),
+  }));
+}
+
+export interface SheetDigest {
+  key: string;
+  name: string;
+  /** 物理表名，来自 DDL */
+  table: string;
+  rows: number;
+  /** 结构判定结果，见 domain/sheet-health */
+  health: SheetIssueKind;
+  /** 除 row_id 外的列名，完整列出 —— 排查失配时这是最关键的一手信息 */
+  columns: string[];
+  /** 解析出候选值的枚举列数 */
+  enums: number;
+}
+
+/**
+ * 表清单摘要 —— 供 `BaraFrontend.diagnose()` 输出。
+ *
+ * 「换了模板后表格显示不出来」这类报告，光看截图要反复推断多轮才能定位，
+ * 而真正需要的信息只有「有哪些表、每张表的列叫什么」。把它做成一句话
+ * 就能拿到的东西，远程排查的成本从几个来回降到一次。
+ */
+export function describeSheets(): SheetDigest[] {
+  return [...getSnapshot().values()].map((s) => ({
+    key: s.key,
+    name: s.name,
+    table: s.table,
+    rows: s.rows.length,
+    health: checkSheet(s.headers).kind,
+    columns: s.headers.filter((h) => h !== 'row_id'),
+    enums: Object.keys(s.enums).length,
+  }));
 }
 
 /** 列的下标。找不到返回 -1。 */

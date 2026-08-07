@@ -6,13 +6,10 @@
  * 表与列都按**展示名**定位，并对模板改名做兼容：用户可能用自己改过的
  * 模板，写死物理表名或物理列名必然失配。
  */
-import { findSheetByName, cell, type SheetSnapshot } from '../snapshot-repo';
+import { resolveSheet, resolveSheets, findSheetByName, cell, type SheetSnapshot } from '../snapshot-repo';
+import { CHARACTERS, PROTAGONIST, ITEMS, EQUIPMENT } from '../../domain/sheet-binding';
 import { parse, type AttributeEntry } from '../../domain/attribute-codec';
 import { resolveUserName, replaceUserPlaceholders } from '../persona';
-
-/** 各角色表在不同模板版本中的命名 */
-const PROTAGONIST_NAMES = ['主角信息'] as const;
-const NPC_NAMES = ['追踪角色表', '重要角色表', '重要人物表'] as const;
 
 const COL = {
   name: '姓名',
@@ -72,7 +69,7 @@ function toVM(
 }
 
 export function readProtagonist(): CharacterVM | null {
-  const sheet = findSheetByName(PROTAGONIST_NAMES);
+  const sheet = resolveSheet(PROTAGONIST);
   if (!sheet || sheet.rows.length === 0) return null;
   return toVM(sheet, sheet.rows[0], 1, true);
 }
@@ -82,18 +79,40 @@ export function readProtagonist(): CharacterVM | null {
  * 优先 persona，其次主角信息表里已写好的真名。
  */
 export function readUserName(): string {
-  const sheet = findSheetByName(PROTAGONIST_NAMES);
+  const sheet = resolveSheet(PROTAGONIST);
   const inTable = sheet?.rows.length ? cell(sheet, sheet.rows[0], COL.name) : '';
   return resolveUserName(inTable);
 }
 
 export function readTrackedCharacters(): CharacterVM[] {
-  const sheet = findSheetByName(NPC_NAMES);
-  if (!sheet) return [];
-  // rowIndex 从 1 起：0 是表头
-  return sheet.rows
-    .map((row, i) => toVM(sheet, row, i + 1, false))
-    .filter((c) => c.name !== '');
+  // 多张角色表并存时全部读取，顺序随模板定义（见 domain/sheet-binding 的 CHARACTERS）
+  return resolveSheets(CHARACTERS).flatMap(({ sheet }) =>
+    sheet.rows
+      // rowIndex 从 1 起：0 是表头。行号是**表内**的，写回时配合 sheetName 定位
+      .map((row, i) => toVM(sheet, row, i + 1, false))
+      .filter((c) => c.name !== ''),
+  );
+}
+
+/**
+ * 各模块依赖的表在当前模板里存不存在。
+ *
+ * **表不存在**与**表里没数据**必须分开：后者是动态的，隐藏面板会让布局
+ * 随数据增减跳动；前者在一份模板下是恒定的 —— 小剧场3.3 这类模板压根
+ * 没有角色概念，那个面板永远不会有内容，留着只是一块空壳。
+ */
+export interface CharacterCapabilities {
+  protagonist: boolean;
+  characters: boolean;
+  supplies: boolean;
+}
+
+export function readCapabilities(): CharacterCapabilities {
+  return {
+    protagonist: !!resolveSheet(PROTAGONIST),
+    characters: resolveSheets(CHARACTERS).length > 0,
+    supplies: !!resolveSheet(ITEMS) || !!resolveSheet(EQUIPMENT),
+  };
 }
 
 export interface SupplyCounts {
@@ -104,7 +123,7 @@ export interface SupplyCounts {
 /** 物资计数直接取快照行数，不需要 COUNT 查询 */
 export function readSupplyCounts(): SupplyCounts {
   return {
-    items: findSheetByName(['物品表'])?.rows.length ?? 0,
-    equipment: findSheetByName(['装备表'])?.rows.length ?? 0,
+    items: resolveSheet(ITEMS)?.rows.length ?? 0,
+    equipment: resolveSheet(EQUIPMENT)?.rows.length ?? 0,
   };
 }

@@ -16,6 +16,8 @@
 import App from './presentation/App.vue';
 import { mountApp, isMounted, unmount, reattach, ROOT_ID } from './presentation/bootstrap/mount';
 import { isDbPresent, canRead, canWrite, onTableUpdate } from './data/db-gateway';
+import { describeSheets } from './data/snapshot-repo';
+import { PLUGIN_VERSION } from './domain/plugin-license';
 import { waitForDatabase } from './data/db-ready';
 import { useSchemaStore, __resetSchemaStore } from './stores/schema-store';
 import { useUiStore, __resetUiStore } from './stores/ui-store';
@@ -89,8 +91,14 @@ function stopWaiting(): void {
   cancelWait = null;
 }
 
+/**
+ * 自检。**表结构摘要是重点** —— 「换了别的数据库模板后表格显示不出来」
+ * 这类报告，需要的信息就是「有哪些表、每张表的列叫什么」，
+ * 光看截图要反复推断多轮才能定位。
+ */
 function diagnose(): Record<string, unknown> {
   const w = (window.top ?? window) as any;
+  const sheets = describeSheets();
   return {
     vue: typeof (globalThis as any).Vue !== 'undefined',
     jquery: typeof $ !== 'undefined',
@@ -101,6 +109,10 @@ function diagnose(): Record<string, unknown> {
     hostInDom: !!w.document?.getElementById?.(ROOT_ID) || !!document.getElementById(ROOT_ID),
     expanded: useUiStore().expanded,
     sheets: useSchemaStore().sheets.length,
+    version: PLUGIN_VERSION,
+    // 结构异常的表单列一份：正常时是空数组，一眼就知道有没有问题
+    unhealthy: sheets.filter((s) => s.health !== 'ok').map((s) => `${s.name}:${s.health}`),
+    tables: sheets,
   };
 }
 

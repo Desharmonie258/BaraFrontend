@@ -75,10 +75,16 @@ export const SECTIONS: readonly SectionSpec[] = [
   { id: 'relations', tab: 'bio', sheets: ['关系表'], ownerColumns: ['角色A', '角色B'] },
 ];
 
-/** 属性来源：主角与其他重要角色分处两表 */
+/**
+ * 属性来源：主角与其他重要角色分处两表。
+ *
+ * 候选名需与 data/repositories/character-repo 的 PROTAGONIST_NAMES /
+ * NPC_NAMES 保持一致 —— 两处认得的表不一样时，仪表盘上有的角色在
+ * 属性同步里会突然不存在。
+ */
 export const ATTRIBUTE_SOURCES = {
-  protagonist: ['主角信息'],
-  npc: ['追踪角色表', '重要角色表', '重要人物表'],
+  protagonist: ['主角信息', '主角信息表'],
+  npc: ['追踪角色表', '重要角色表', '重要人物表', '恋爱对象表'],
 } as const;
 
 /**

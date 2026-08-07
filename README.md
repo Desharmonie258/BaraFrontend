@@ -2,7 +2,7 @@
 
 **为 SillyTavern 的表格数据库提供一套统一的角色面板。**
 
-脚本 `1.0a-hotfix-RosaCaninae` · 模板 `1.0-RosaCaninae`
+脚本 `1.0b-hotfix-RosaCaninae` · 模板 `1.0-RosaCaninae`
 
 把散在十几张表里的属性、技能、特性、状态、资源、关系和人设小传，收进一个常驻在聊天下方的面板；顺带把检定、变更审核和角色卡一起做了。
 
@@ -14,7 +14,7 @@
 
 1. 装 [酒馆助手 JS-Slash-Runner](https://github.com/n0vi028/JS-Slash-Runner)（前置，两个脚本都跑在它上面）
 2. 导入 [数据库本体](https://discord.com/channels/1134557553011998840/1429151492362862683)
-3. 导入 [`发布/蔷薇前端-1.0a-hotfix-RosaCaninae.json`](发布/)
+3. 导入 [`发布/Script-BaraFrontend-1.0b-hotfix-RosaCaninae.json`](发布/)
 4. 数据库设置 → 高级设置 → 存储模式切到 **SQLite**
 5. 导入 [`发布/数据库模板-BaraFrontend-1.0-RosaCaninae.json`](发布/)
 

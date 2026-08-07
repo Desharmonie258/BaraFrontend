@@ -9,10 +9,9 @@
  * 列按**展示名**定位并留有回退（骰子系统用「包含匹配」找列，
  * 这里沿用同样的思路），用户改过模板列名时不至于整块失效。
  */
-import { findSheetByName, colIndex, type SheetSnapshot } from '../snapshot-repo';
+import { resolveSheet, colIndex, type SheetSnapshot } from '../snapshot-repo';
+import { SUGGESTIONS } from '../../domain/sheet-binding';
 import { resolveUserName, replaceUserPlaceholders, isUserPlaceholder } from '../persona';
-
-const SHEET_NAMES = ['检定建议表', '检定建议'] as const;
 
 /** 快进类建议的骰子命令占位值，不应被当成真命令发出 */
 const NO_COMMAND = new Set(['无', '-', '—', '']);
@@ -57,7 +56,7 @@ function toKind(raw: string): SuggestionKind {
  * 只会让人以为坏了。表不存在时返回空数组而非抛错：模板可能还没导入。
  */
 export function readSuggestions(): SuggestionVM[] {
-  const sheet = findSheetByName(SHEET_NAMES);
+  const sheet = resolveSheet(SUGGESTIONS);
   if (!sheet) return [];
 
   const cType = findCol(sheet, '建议类型', '类型', 1);
@@ -93,5 +92,5 @@ export function readSuggestions(): SuggestionVM[] {
 
 /** 建议表是否存在。不存在时界面不显示这一块，而不是显示一个空面板。 */
 export function hasSuggestionSheet(): boolean {
-  return findSheetByName(SHEET_NAMES) !== undefined;
+  return resolveSheet(SUGGESTIONS) !== undefined;
 }

@@ -28,6 +28,10 @@ import { isDbPresent, canRead, canWrite } from '../../data/db-gateway';
 import { canSend } from '../../data/chat-sender';
 import type { RuleFamily } from '../../domain/rule-systems';
 import { previewSync, applySync, type SyncPreview } from '../../data/repositories/attribute-sync';
+import { describeBindings } from '../../data/snapshot-repo';
+import {
+  CHARACTERS, PROTAGONIST, SUGGESTIONS, ITEMS, EQUIPMENT, RESOURCES,
+} from '../../domain/sheet-binding';
 import SettingsGroup from '../shell/SettingsGroup.vue';
 import RuleModePicker from '../shell/RuleModePicker.vue';
 import ThemePicker from '../shell/ThemePicker.vue';
@@ -36,6 +40,15 @@ import SettingsRow from '../shell/SettingsRow.vue';
 
 const ui = useUiStore();
 const schema = useSchemaStore();
+
+/**
+ * 模板适配情况。依赖 schema.sheets 重算 —— 换聊天、重新导入模板后
+ * 认到的表会变，这里必须跟着变，否则显示的是上一份模板的结论。
+ */
+const bindings = computed(() => {
+  void schema.sheets;
+  return describeBindings([CHARACTERS, PROTAGONIST, SUGGESTIONS, ITEMS, EQUIPMENT, RESOURCES]);
+});
 
 const modeOptions = computed(() => [
   { label: t('settings.mode.auto', ui.lang), value: 'auto' },
@@ -414,6 +427,39 @@ async function onApply(): Promise<void> {
       </div>
     </SettingsGroup>
 
+    <!--
+      模板适配情况 —— 回答「为什么我这里没有资源条」。
+      认不出的功能会自动隐藏，用户看不到任何痕迹，只能靠这里查明原因。
+    -->
+    <SettingsGroup
+      :title="t('compat.title', ui.lang)"
+      :icon="GROUP_ICONS.dock"
+      :expanded="ui.isGroupExpanded('compat')"
+      @toggle="ui.toggleGroup('compat')"
+    >
+      <p class="bara-set__compat-hint">{{ t('compat.hint', ui.lang) }}</p>
+      <div v-for="b in bindings" :key="b.id" class="bara-set__compat-row">
+        <span class="bara-set__compat-cap">{{ t(`compat.cap.${b.id}`, ui.lang) }}</span>
+        <span v-if="!b.matched.length" class="bara-set__compat-none">
+          {{ t('compat.none', ui.lang) }}
+        </span>
+        <span v-else class="bara-set__compat-hits">
+          <!-- 表名取自模板，不翻译（§8.7c）；命中方式要译 -->
+          <NTag
+            v-for="m in b.matched"
+            :key="m.name"
+            size="small"
+            :bordered="false"
+            :type="m.via === 'fingerprint' ? 'warning' : 'default'"
+            :title="t(`compat.via.${m.via}`, ui.lang)"
+          >
+            {{ m.name }}
+            <span class="bara-set__compat-via">{{ t(`compat.via.${m.via}`, ui.lang) }}</span>
+          </NTag>
+        </span>
+      </div>
+    </SettingsGroup>
+
     <!-- 关于 -->
     <SettingsGroup
       :title="t('settings.group.about', ui.lang)"
@@ -518,6 +564,42 @@ async function onApply(): Promise<void> {
   word-break: break-word;
 }
 .bara-set__sync-actions { display: flex; gap: var(--bara-space-2); }
+
+.bara-set__compat-hint {
+  margin: 0 0 var(--bara-space-3);
+  padding-top: var(--bara-space-2);
+  font-size: var(--bara-font-size-xs);
+  color: var(--bara-color-text-subtle);
+  line-height: var(--bara-line-height-relaxed);
+}
+.bara-set__compat-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--bara-space-3);
+  padding: var(--bara-space-2) 0;
+}
+.bara-set__compat-cap {
+  flex: none;
+  min-width: 5rem;
+  font-size: var(--bara-font-size-sm);
+}
+/* 一项能力可能认到多张表（角色表就常有两张），换行排列 */
+.bara-set__compat-hits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bara-space-2);
+  min-width: 0;
+}
+.bara-set__compat-none {
+  font-size: var(--bara-font-size-xs);
+  color: var(--bara-color-text-subtle);
+}
+/* 命中方式压小并弱化：主角是表名，方式是佐证 */
+.bara-set__compat-via {
+  margin-left: var(--bara-space-2);
+  font-size: var(--bara-font-size-xs);
+  opacity: 0.75;
+}
 
 .bara-set__sheets {
   display: flex;

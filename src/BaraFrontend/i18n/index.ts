@@ -62,6 +62,13 @@ const zhCN: Catalog = {
   'dashboard.equipment': '装备',
   'card.rollHint': '点击用「{attr}」发起检定',
   'dashboard.empty.chars': '暂无重要角色',
+  /*
+   * 面板全部不适用时的兜底。**不能留空白页** —— 仪表盘对这份模板确实
+   * 无从显示，但用户需要知道「不是坏了，是这份模板没有这些表」，
+   * 以及数据该去哪里看。
+   */
+  'dashboard.unsupported': '当前数据库模板不含角色相关的表，仪表盘没有可显示的内容。',
+  'dashboard.unsupported.hint': '表格数据仍可从下方的表格列表查看。',
   'dashboard.empty.items': '暂无物品',
   'dashboard.empty.equipment': '暂无装备',
 
@@ -141,6 +148,31 @@ const zhCN: Catalog = {
   'table.search': '搜索全部…',
   'table.saved': '已将「{label}」设为「{value}」',
   'table.count': '{range} / 共 {total} 项',
+
+  /*
+   * 结构失配的提示。**不能与空态共用一句话** —— 「就是没有数据」和
+   * 「这张表我读不懂」对用户是完全不同的信息，混在一起就没法自助排查。
+   */
+  'table.broken.title': '这张表的结构与当前前端预期不符',
+  'table.broken.noHeaders': '没有读到表头。可能是数据库插件尚未完成初始化，可稍后重试。',
+  'table.broken.onlyRowId': '除内部主键外没有任何数据列，因此没有内容可显示。',
+  'table.broken.sqlHeaders': '列名是英文而非中文，多半是该表的结构注释在某次重建中丢失了。表格内容仍可查看，但按列名匹配的功能会失效。',
+  'table.broken.columns': '实际列名：{columns}',
+
+  // ── 模板适配情况（设置面板）──
+  'compat.title': '模板适配情况',
+  'compat.hint': '各项功能在当前数据库模板下认到了哪些表。认不出的功能会自动隐藏，不影响表格本身的查看。',
+  'compat.none': '未认出',
+  'compat.via.key': '按表标识',
+  'compat.via.name': '按表名',
+  // 指纹是推测，必须让用户看得出来 —— 万一推错了，这是唯一的线索
+  'compat.via.fingerprint': '按列结构推测',
+  'compat.cap.characters': '角色',
+  'compat.cap.protagonist': '主角',
+  'compat.cap.suggestions': '检定建议',
+  'compat.cap.items': '物品',
+  'compat.cap.equipment': '装备',
+  'compat.cap.resources': '资源条',
 
   // 枚举显示名：库里存键，界面显译文
   'refresh.manual': '手动',
@@ -293,6 +325,8 @@ const enUS: Catalog = {
   'dashboard.equipment': 'Equipment',
   'card.rollHint': 'Roll with {attr}',
   'dashboard.empty.chars': 'No key characters',
+  'dashboard.unsupported': 'This database template has no character-related sheets, so the dashboard has nothing to show.',
+  'dashboard.unsupported.hint': 'Sheet data is still available from the sheet list below.',
   'dashboard.empty.items': 'No items',
   'dashboard.empty.equipment': 'No equipment',
 
@@ -372,6 +406,25 @@ const enUS: Catalog = {
   'table.search': 'Search all…',
   'table.saved': 'Set {label} to {value}',
   'table.count': '{range} / {total} total',
+
+  'table.broken.title': "This sheet's structure doesn't match what the frontend expects",
+  'table.broken.noHeaders': 'No header row was read. The database plugin may still be initialising — try again shortly.',
+  'table.broken.onlyRowId': 'No data columns besides the internal primary key, so there is nothing to show.',
+  'table.broken.sqlHeaders': 'Column names are in English rather than Chinese, most likely because this sheet lost its schema comments during a rebuild. Contents remain viewable, but features that match on column names will not work.',
+  'table.broken.columns': 'Actual columns: {columns}',
+
+  'compat.title': 'Template compatibility',
+  'compat.hint': 'Which sheets each feature found in the current database template. Features that cannot be identified are hidden automatically; sheet browsing is unaffected.',
+  'compat.none': 'Not found',
+  'compat.via.key': 'by sheet id',
+  'compat.via.name': 'by sheet name',
+  'compat.via.fingerprint': 'inferred from columns',
+  'compat.cap.characters': 'Characters',
+  'compat.cap.protagonist': 'Protagonist',
+  'compat.cap.suggestions': 'Check suggestions',
+  'compat.cap.items': 'Items',
+  'compat.cap.equipment': 'Equipment',
+  'compat.cap.resources': 'Resources',
 
   'refresh.manual': 'Manual',
   'refresh.scene': 'Scene',

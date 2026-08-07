@@ -17,6 +17,7 @@ import { getSheet } from '../../data/snapshot-repo';
 import { replaceUserPlaceholders } from '../../data/persona';
 import { t } from '../../i18n';
 import { isEnumEditable } from '../../domain/enum-policy';
+import { checkSheet, isRenderable } from '../../domain/sheet-health';
 import { availableViews, resolveView, type ViewMode } from '../../domain/table-view-policy';
 import RowCard from '../components/RowCard.vue';
 import RowTable from '../components/RowTable.vue';
@@ -118,6 +119,31 @@ const rangeText = computed(() =>
   visibleRows.value.length === 0 ? '0-0' : `1-${visibleRows.value.length}`,
 );
 
+/**
+ * 结构判定。**只在加载完成后判**：加载中表头本来就还没有，
+ * 那时报「读不到表头」是错的。
+ */
+const health = computed(() => checkSheet(sheet.value?.headers));
+/** 结构坏到渲染不出内容 —— 此时必须说明原因，不能留空白或空卡片 */
+const isBroken = computed(() => schema.loaded && !isRenderable(health.value));
+/** 列名退化成英文：内容仍可看，只作提醒，不挡住表格 */
+const isSqlHeaders = computed(() => schema.loaded && health.value.kind === 'sql_headers');
+
+const brokenReason = computed(() => {
+  const key =
+    health.value.kind === 'no_headers'
+      ? 'table.broken.noHeaders'
+      : health.value.kind === 'only_row_id'
+        ? 'table.broken.onlyRowId'
+        : 'table.broken.sqlHeaders';
+  return t(key, ui.lang);
+});
+
+/** 实际列名要展示出来 —— 这是用户判断「该用哪份模板」的唯一依据 */
+const columnsText = computed(() =>
+  t('table.broken.columns', ui.lang, { columns: health.value.dataColumns.join('、') || '—' }),
+);
+
 function load(): void {
   const s = sheet.value;
   if (!s) return;
@@ -212,10 +238,38 @@ async function onSetCell(rowIndex: number, label: string, value: string): Promis
       {{ notice.text }}
     </NAlert>
 
+    <!--
+      结构失配的提醒。列名退化成英文时表格照常显示，只在上方加一条说明 ——
+      内容看得见，挡住反而是帮倒忙。
+    -->
+    <NAlert
+      v-if="isSqlHeaders"
+      type="warning"
+      :title="t('table.broken.title', ui.lang)"
+      class="bara-tbl__alert"
+    >
+      {{ brokenReason }}
+    </NAlert>
+
     <div>
       <div v-if="isLoading" class="bara-tbl__skeleton">
         <NSkeleton v-for="i in 4" :key="i" text :repeat="3" />
       </div>
+
+      <!--
+        结构坏到渲染不出内容：说清楚是什么情况、实际列名是什么。
+        改造前这里会渲染出一叠只有内边距和 #1 角标的空卡片 ——
+        有高度、无内容、无任何说明，用户完全无从判断发生了什么。
+      -->
+      <NAlert
+        v-else-if="isBroken"
+        type="warning"
+        :title="t('table.broken.title', ui.lang)"
+        class="bara-tbl__alert"
+      >
+        <p class="bara-tbl__broken-line">{{ brokenReason }}</p>
+        <p class="bara-tbl__broken-cols">{{ columnsText }}</p>
+      </NAlert>
 
       <NEmpty
         v-else-if="!loading && visibleRows.length === 0"
@@ -266,6 +320,18 @@ async function onSetCell(rowIndex: number, label: string, value: string): Promis
   font-family: var(--bara-font-family-mono);
 }
 .bara-tbl__alert { margin-bottom: var(--bara-space-4); }
+.bara-tbl__broken-line { margin: 0; }
+/*
+ * 列名用等宽字体并允许换行：它是给人比对的原始数据，
+ * 截断了就失去了作用（表可能有二十几列）。
+ */
+.bara-tbl__broken-cols {
+  margin: var(--bara-space-2) 0 0;
+  font-family: var(--bara-font-family-mono);
+  font-size: var(--bara-font-size-xs);
+  color: var(--bara-color-text-muted);
+  word-break: break-word;
+}
 /* 骨架按卡片视图的密度铺，加载完成时视觉重心不跳 */
 .bara-tbl__skeleton {
   display: grid;

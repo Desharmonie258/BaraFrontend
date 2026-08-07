@@ -36,7 +36,11 @@ const BUNDLE = path.join(ROOT, 'dist', 'BaraFrontend', 'index.js');
 const OUT_DIR = path.join(ROOT, 'dist', 'BaraFrontend');
 // 文件名带版本号：导入酒馆后脚本列表只显示 name 字段，而下载目录里
 // 躺着好几个同名 json 时根本分不清哪个是新的。
-const OUT = path.join(OUT_DIR, `蔷薇前端-${VERSION}.json`);
+//
+// 命名统一为 `Script-BaraFrontend-<版本>.json`，与模板的
+// `Preset-BaraFrontend-<版本>.json` 成对（见 doc/版本号规则.md）。
+// 用 ASCII 前缀而非中文：下载目录里两者相邻排列，一眼能看出是一套。
+const OUT = path.join(OUT_DIR, `Script-BaraFrontend-${VERSION}.json`);
 
 if (!fs.existsSync(BUNDLE)) {
   console.error(`未找到产物: ${BUNDLE}\n请先运行 pnpm build`);
