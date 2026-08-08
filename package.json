@@ -7,11 +7,15 @@
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "dump": "node dump_schema.ts",
+<<<<<<< HEAD
     "sync": "node tavern_sync.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "pack:tavern": "node pack-script.mjs",
     "build:tavern": "webpack --mode production && node pack-script.mjs"
+=======
+    "sync": "node tavern_sync.mjs"
+>>>>>>> 9072edeaaddd1166c92d20e75542e4d14d4fdbc2
   },
   "browserslist": [
     "defaults and partially supports es6-module"
@@ -28,7 +32,10 @@
     "@types/toastr": "^2.1.43",
     "@types/webpack": "^5.28.5",
     "@typescript-eslint/parser": "^8.66.0",
+<<<<<<< HEAD
     "@vitejs/plugin-vue": "^6.0.8",
+=======
+>>>>>>> 9072edeaaddd1166c92d20e75542e4d14d4fdbc2
     "autoprefixer": "^10.5.4",
     "chokidar": "^5.0.0",
     "css-loader": "^7.1.4",
@@ -48,7 +55,10 @@
     "html-webpack-inline-svg-plugin": "^2.3.0",
     "html-webpack-plugin": "^5.6.8",
     "javascript-obfuscator": "^5.5.0",
+<<<<<<< HEAD
     "jsdom": "^30.0.1",
+=======
+>>>>>>> 9072edeaaddd1166c92d20e75542e4d14d4fdbc2
     "mini-css-extract-plugin": "^2.10.2",
     "postcss": "^8.5.26",
     "postcss-cli": "^11.0.1",
@@ -74,7 +84,10 @@
     "typescript-eslint": "^8.66.0",
     "unplugin-auto-import": "^21.1.0",
     "unplugin-vue-components": "^32.1.0",
+<<<<<<< HEAD
     "vitest": "^4.1.10",
+=======
+>>>>>>> 9072edeaaddd1166c92d20e75542e4d14d4fdbc2
     "vue-eslint-parser": "^10.4.1",
     "vue-loader": "^17.4.2",
     "vue-style-loader": "^4.1.3",
@@ -85,7 +98,10 @@
   },
   "dependencies": {
     "@pixi/react": "8.0.5",
+<<<<<<< HEAD
     "@vicons/fluent": "^0.13.0",
+=======
+>>>>>>> 9072edeaaddd1166c92d20e75542e4d14d4fdbc2
     "@vueuse/components": "^14.4.0",
     "@vueuse/core": "^14.4.0",
     "@vueuse/integrations": "^14.4.0",
@@ -101,7 +117,10 @@
     "jsonrepair": "^3.15.0",
     "klona": "^2.0.6",
     "lodash": "^4.18.1",
+<<<<<<< HEAD
     "naive-ui": "^2.44.1",
+=======
+>>>>>>> 9072edeaaddd1166c92d20e75542e4d14d4fdbc2
     "pinia": "^3.0.4",
     "pixi.js": "^8.19.0",
     "react": "^19.2.8",
