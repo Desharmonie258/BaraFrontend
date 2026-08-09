@@ -83,8 +83,10 @@ export const SECTIONS: readonly SectionSpec[] = [
  * 属性同步里会突然不存在。
  */
 export const ATTRIBUTE_SOURCES = {
+  // 1.1 起自家模板只有「角色表」（主角是其中一行）；两个键仍分开列，
+  // 因为外部模板依旧分表，主角表要能单独认出来
   protagonist: ['主角信息', '主角信息表'],
-  npc: ['追踪角色表', '重要角色表', '重要人物表', '恋爱对象表'],
+  npc: ['角色表', '追踪角色表', '重要角色表', '重要人物表', '恋爱对象表'],
 } as const;
 
 /**

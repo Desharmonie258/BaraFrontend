@@ -576,6 +576,17 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
         '@emotion/hash',
         // 图标：10072 个组件、57MB，必须靠 tree shaking 只带走用到的几个
         '@vicons/fluent',
+        // 地图排版：只用 d3 的力模拟算坐标（14 KB），SVG 仍由 Vue 渲染。
+        // 刻意不引 d3-selection / d3-transition / d3-zoom —— 那几个会接管
+        // DOM，与 Vue 抢渲染控制权；d3-force 是纯算法，只吐坐标数字。
+        //
+        // 三个传递依赖必须一并列出，理由同上面的 naive-ui：只写 d3-force
+        // 本体的话，它内部的 `import from 'd3-dispatch'` 仍会被转成 CDN
+        // 导入 —— pack-script 会如实报出「运行期 CDN 依赖」三条。
+        'd3-force',
+        'd3-dispatch',
+        'd3-quadtree',
+        'd3-timer',
       ];
       if (bundle_locally.some(key => request === key || request.startsWith(`${key}/`))) {
         return callback();

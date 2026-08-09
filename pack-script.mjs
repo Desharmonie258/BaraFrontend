@@ -41,6 +41,10 @@ const OUT_DIR = path.join(ROOT, 'dist', 'BaraFrontend');
 // `Preset-BaraFrontend-<版本>.json` 成对（见 doc/版本号规则.md）。
 // 用 ASCII 前缀而非中文：下载目录里两者相邻排列，一眼能看出是一套。
 const OUT = path.join(OUT_DIR, `Script-BaraFrontend-${VERSION}.json`);
+// 同内容再出一份中文名，与模板的双名策略一致：
+// 中文名面向酒馆社区分发（用户一眼认得出是什么），ASCII 名供 GitHub
+// release 附件用。两份由同一次构建写出，不会出现内容漂移。
+const OUT_CN = path.join(OUT_DIR, `酒馆助手脚本-BaraFrontend-${VERSION}.json`);
 
 if (!fs.existsSync(BUNDLE)) {
   console.error(`未找到产物: ${BUNDLE}\n请先运行 pnpm build`);
@@ -91,11 +95,14 @@ const json = {
 };
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
-fs.writeFileSync(OUT, JSON.stringify(json, null, 2), 'utf-8');
+const payload = JSON.stringify(json, null, 2);
+fs.writeFileSync(OUT, payload, 'utf-8');
+fs.writeFileSync(OUT_CN, payload, 'utf-8');
 
 const kb = (n) => (n / 1024).toFixed(1) + ' KB';
 console.log('已生成单文件脚本');
 console.log('  路径: ' + path.relative(ROOT, OUT));
+console.log('  同内容: ' + path.relative(ROOT, OUT_CN));
 console.log('  代码: ' + kb(code.length));
 console.log('  JSON: ' + kb(fs.statSync(OUT).size));
 if (cdnImports.length > 0) {

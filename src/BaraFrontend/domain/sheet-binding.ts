@@ -77,7 +77,8 @@ export const PROTAGONIST: SheetSpec = {
 export const CHARACTERS: SheetSpec = {
   id: 'characters',
   keys: ['sheet_important_npc', 'sheet_romance_targets', 'sheet_important_non_romance'],
-  names: ['追踪角色表', '重要角色表', '重要人物表', '恋爱对象表'],
+  // 1.1 起自家模板把主角并入本表并改名「角色表」；旧名保留，用户可能还没重导
+  names: ['角色表', '追踪角色表', '重要角色表', '重要人物表', '恋爱对象表'],
   // 这三列在九份模板的各类角色表里都稳定存在，正是「定位相同」的那部分；
   // 恋爱内容之类会变的部分不进指纹。
   fingerprint: ['姓名', '基础属性', '特有属性'],
@@ -89,8 +90,10 @@ export const CHARACTERS: SheetSpec = {
    * 这正是指纹最危险的失败模式：不命中会显示明确提示，误命中却显示
    * 一份看起来正常的错误数据，很难被发现。
    *
-   * 下个代号版本主角表并入角色表后，PROTAGONIST 这个规格本身会消失，
-   * 这条排除也随之移除 —— 那时「主角是一种角色」，重复的问题不复存在。
+   * **1.1 合并主角表之后这条依然要留着。** 曾预计「主角并入角色表后
+   * PROTAGONIST 规格会消失、这条排除随之移除」，但那只对自家模板成立：
+   * 外部模板不会跟着合并，它们的主角表照样会被指纹误命中。
+   * 合并改变的是自家模板的形态，不是兼容层的职责。
    */
   excludes: [PROTAGONIST],
 };

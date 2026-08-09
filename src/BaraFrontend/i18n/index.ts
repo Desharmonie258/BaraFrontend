@@ -140,9 +140,16 @@ const zhCN: Catalog = {
   'table.view.card': '卡片',
   'table.view.list': '列表',
   'table.view.calendar': '日历',
+  'table.view.map': '地图',
   'calendar.storyToday': '剧情当前',
   'calendar.prev': '上一月',
   'calendar.next': '下一月',
+
+  'map.empty': '本层级还没有可定位的地点',
+  'map.level.world': '世界',
+  'map.legend.solid': '通路',
+  'map.legend.dashed': '水域相隔',
+  'map.legend.thick': '地形阻隔',
 
 
   'table.search': '搜索全部…',
@@ -398,9 +405,15 @@ const enUS: Catalog = {
   'table.view.card': 'Cards',
   'table.view.list': 'List',
   'table.view.calendar': 'Calendar',
+  'table.view.map': 'Map',
   'calendar.storyToday': 'Story date',
   'calendar.prev': 'Previous month',
   'calendar.next': 'Next month',
+  'map.level.world': 'World',
+  'map.empty': 'No locatable places on this level yet',
+  'map.legend.solid': 'Passable',
+  'map.legend.dashed': 'Across water',
+  'map.legend.thick': 'Terrain barrier',
 
 
   'table.search': 'Search all…',

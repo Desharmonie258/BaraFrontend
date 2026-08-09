@@ -90,6 +90,115 @@ describe('readProtagonist', () => {
   });
 });
 
+/**
+ * 1.1 起主角是角色表里的一行，不再有独立的主角表。
+ *
+ * 主角没有数据层的显式标记 —— 它就是 persona。这批用例锁的是
+ * 「怎么把那一行认出来」以及「认出来之后不能在重要角色里重复出现」。
+ */
+describe('合并后的主角行', () => {
+  /** 带「角色定位」列的表头，对应 1.1 模板 */
+  const H = [...HEAD, '角色定位'];
+  const r = (id: string, name: string, profile = '跟踪中'): string[] => [
+    ...row(id, name),
+    profile,
+  ];
+
+  beforeEach(() => {
+    for (const k of ['getCurrentPersonaName', 'TavernHelper', 'SillyTavern', 'name1']) {
+      delete (globalThis as any)[k];
+    }
+  });
+
+  it('按 persona 名认出主角行', () => {
+    (window as any).name1 = '笹兵卫';
+    mock({
+      sheet_important_npc: {
+        name: '角色表',
+        content: [H, r('1', '笹兵卫', '永固'), r('2', '艾莉丝')],
+      },
+    });
+    const p = readProtagonist();
+    expect(p?.name).toBe('笹兵卫');
+    expect(p?.isProtagonist).toBe(true);
+  });
+
+  it('主角不在重要角色列表里重复出现', () => {
+    (window as any).name1 = '笹兵卫';
+    mock({
+      sheet_important_npc: {
+        name: '角色表',
+        content: [H, r('1', '笹兵卫', '永固'), r('2', '艾莉丝')],
+      },
+    });
+    expect(readTrackedCharacters().map((c) => c.name)).toEqual(['艾莉丝']);
+  });
+
+  it('主角行不在首行时，行号仍指向它自己 —— 写回要靠这个', () => {
+    (window as any).name1 = '笹兵卫';
+    mock({
+      sheet_important_npc: {
+        name: '角色表',
+        content: [H, r('1', '艾莉丝'), r('2', '笹兵卫', '永固')],
+      },
+    });
+    expect(readProtagonist()?.rowIndex).toBe(2);
+    expect(readTrackedCharacters().map((c) => c.rowIndex)).toEqual([1]);
+  });
+
+  it('姓名写成未展开的 {{user}} 时也能认出 —— 模板注入时不展开这个宏', () => {
+    (window as any).name1 = '笹兵卫';
+    mock({
+      sheet_important_npc: {
+        name: '角色表',
+        content: [H, r('1', '{{user}}', '永固'), r('2', '艾莉丝')],
+      },
+    });
+    expect(readProtagonist()?.name).toBe('笹兵卫');
+    expect(readTrackedCharacters().map((c) => c.name)).toEqual(['艾莉丝']);
+  });
+
+  it('persona 名对不上时，退到第一个「永固」行', () => {
+    (window as any).name1 = '玩家改过的名字';
+    mock({
+      sheet_important_npc: {
+        name: '角色表',
+        content: [H, r('1', '艾莉丝'), r('2', '笹兵卫', '永固')],
+      },
+    });
+    expect(readProtagonist()?.name).toBe('笹兵卫');
+  });
+
+  it('没有 persona 也没有永固行时返回 null，而不是错认一行', () => {
+    mock({
+      sheet_important_npc: { name: '角色表', content: [H, r('1', '艾莉丝'), r('2', '太郎')] },
+    });
+    expect(readProtagonist()).toBeNull();
+    // 认不出是**数据**问题：面板位置保留、内部显示空态，布局不随数据跳动
+    expect(readCapabilities().protagonist).toBe(true);
+    // 认不出主角也不影响其他角色照常显示
+    expect(readTrackedCharacters().map((c) => c.name)).toEqual(['艾莉丝', '太郎']);
+  });
+
+  it('空姓名行不会被误认成主角', () => {
+    // resolveUserName('') 返回兜底文案「主角」，取不到 persona 时两边会撞上
+    mock({
+      sheet_important_npc: { name: '角色表', content: [H, r('1', ''), r('2', '艾莉丝')] },
+    });
+    expect(readProtagonist()).toBeNull();
+  });
+
+  it('旧结构仍然可读 —— 外部模板不会跟着我们合并', () => {
+    (window as any).name1 = '笹兵卫';
+    mock({
+      sheet_protagonist: { name: '主角信息', content: [HEAD, row('1', '甲')] },
+      sheet_important_npc: { name: '追踪角色表', content: [HEAD, row('1', '艾莉丝')] },
+    });
+    expect(readProtagonist()?.name).toBe('甲');
+    expect(readTrackedCharacters().map((c) => c.name)).toEqual(['艾莉丝']);
+  });
+});
+
 describe('readCapabilities', () => {
   it('表不存在时判为不可用 —— 界面据此整块隐藏', () => {
     mock({ sheet_summary: { name: '纪要表', content: [['row_id', '概览']] } });
@@ -136,6 +245,7 @@ describe('真实模板', () => {
     yo: load('需兼容适配/YO-骰子-恋爱特化表v7.3.json'),
     theater: load('需兼容适配/小剧场3.3.json'),
     own: load('数据库模板-BaraFrontend-1.0-RosaCaninae.json'),
+    own11: load('数据库模板-BaraFrontend-1.1-Gigantea.json'),
   };
 
   function loadTemplate(which: keyof typeof TEMPLATES) {
@@ -156,12 +266,24 @@ describe('真实模板', () => {
     expect(caps.supplies).toBe(false);
   });
 
-  it('自家模板：三项能力齐备', () => {
+  it('自家模板 1.0：三项能力齐备', () => {
     loadTemplate('own');
     expect(readCapabilities()).toEqual({
       protagonist: true,
       characters: true,
       supplies: true,
     });
+  });
+
+  it('自家模板 1.1：主角表没了，但主角能力不能跟着消失', () => {
+    loadTemplate('own11');
+    // 主角并入角色表 —— 有角色表就有承载主角的地方，面板照常出现，
+    // 里面显示空态（模板只有表头，主角行要等初始化才生成）
+    expect(readCapabilities()).toEqual({
+      protagonist: true,
+      characters: true,
+      supplies: true,
+    });
+    expect(readProtagonist()).toBeNull();
   });
 });

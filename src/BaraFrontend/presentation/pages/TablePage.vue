@@ -19,9 +19,11 @@ import { t } from '../../i18n';
 import { isEnumEditable } from '../../domain/enum-policy';
 import { checkSheet, isRenderable } from '../../domain/sheet-health';
 import { availableViews, resolveView, type ViewMode } from '../../domain/table-view-policy';
+import { detectMapColumns } from '../../domain/map-layout';
 import RowCard from '../components/RowCard.vue';
 import RowTable from '../components/RowTable.vue';
 import RowCalendar from '../components/RowCalendar.vue';
+import RowMap from '../components/RowMap.vue';
 
 const props = defineProps<{ sheetKey: string }>();
 
@@ -65,26 +67,35 @@ const dateColumn = computed(() => {
   return cols.find((c) => c === '日期') ?? cols.find((c) => c.includes('日期')) ?? '';
 });
 
+/**
+ * 坐标列探测。与日期列同理，只对确实有两列坐标的表开放地图 ——
+ * 口径在 domain/map-layout，与视图策略和跨模板回归测试共用一份。
+ */
+const mapColumns = computed(() => detectMapColumns(sheet.value?.headers ?? []));
+
 const VIEW_LABEL: Record<ViewMode, string> = {
   card: 'table.view.card',
   list: 'table.view.list',
   calendar: 'table.view.calendar',
+  map: 'table.view.map',
 };
 
 /**
- * 可选视图由表决定：小日历表、小日记表只开放日历
+ * 可选视图由表决定：小日历表、小日记表只开放日历，地图表默认落到地图
  * （见 domain/table-view-policy）。只有一种时不渲染切换器 ——
  * 单选项的选择器只是噪声。
  */
-const views = computed(() =>
-  availableViews(sheet.value?.name ?? '', !!dateColumn.value),
-);
+const viewCaps = computed(() => ({
+  hasDate: !!dateColumn.value,
+  hasCoords: mapColumns.value !== null,
+}));
+const views = computed(() => availableViews(sheet.value?.name ?? '', viewCaps.value));
 const viewOptions = computed(() =>
   views.value.map((v) => ({ label: t(VIEW_LABEL[v], ui.lang), value: v })),
 );
 /** 记忆的模式可能已不在可用范围内（换了模板 / 改了表名），需收敛 */
 const viewMode = computed(() =>
-  resolveView(sheet.value?.name ?? '', !!dateColumn.value, ui.tableViewMode(props.sheetKey)),
+  resolveView(sheet.value?.name ?? '', viewCaps.value, ui.tableViewMode(props.sheetKey)),
 );
 
 /**
@@ -296,6 +307,17 @@ async function onSetCell(rowIndex: number, label: string, value: string): Promis
         :rows="visibleRows"
         :columns="sheet?.headers ?? []"
         :date-column="dateColumn"
+        :lang="ui.lang"
+      />
+
+      <RowMap
+        v-else-if="viewMode === 'map' && mapColumns"
+        :rows="visibleRows"
+        :columns="sheet?.headers ?? []"
+        :name-column="mapColumns.name"
+        :x-column="mapColumns.x"
+        :y-column="mapColumns.y"
+        :adjacency-column="mapColumns.adjacency"
         :lang="ui.lang"
       />
 
