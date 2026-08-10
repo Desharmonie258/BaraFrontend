@@ -5,6 +5,7 @@ import {
   detectMapColumns,
   detectHierarchy,
   drillInto,
+  resolveLanding,
   filterByLevel,
   layoutMap,
   type MapPointInput,
@@ -345,5 +346,60 @@ describe('排版', () => {
     const layout = layoutMap([{ rowIndex: 1, name: 'A' }], BOX);
     expect(Number.isFinite(layout.points[0].px)).toBe(true);
     expect(Number.isFinite(layout.points[0].py)).toBe(true);
+  });
+});
+
+/**
+ * 落地层级（1.11）—— 打开地图停在玩家脚下那一层。
+ *
+ * 关键是**降级**：想去的那一层可能一个点都没有（剧情刚到新地区、
+ * AI 还没录入详细地点），落到空图比落在世界层更让人以为地图坏了。
+ */
+describe('落地层级', () => {
+  /** 两个主要地区：青木省有完整三层，东京都只到次要地区 */
+  const rows = [
+    { cells: { 详细地点: '青木省', 次要地区: '青木省', 主要地区: '青木省', 地点类型: '概览' } },
+    { cells: { 详细地点: '东京都', 次要地区: '东京都', 主要地区: '东京都', 地点类型: '概览' } },
+    { cells: { 详细地点: '橡木镇', 次要地区: '橡木镇', 主要地区: '青木省', 地点类型: '概览' } },
+    { cells: { 详细地点: '新宿区', 次要地区: '新宿区', 主要地区: '东京都', 地点类型: '概览' } },
+    { cells: { 详细地点: '野猪旅馆', 次要地区: '橡木镇', 主要地区: '青木省', 地点类型: '商业' } },
+    { cells: { 详细地点: '橡木镇广场', 次要地区: '橡木镇', 主要地区: '青木省', 地点类型: '特殊' } },
+  ];
+
+  const cols = {
+    name: '详细地点',
+    major: '主要地区',
+    minor: '次要地区',
+    type: '地点类型',
+  };
+
+  it('脚下那一层有点，就落在详细地点层', () => {
+    expect(resolveLanding(rows, cols, { major: '青木省', minor: '橡木镇' })).toEqual({
+      kind: 'minor', major: '青木省', minor: '橡木镇',
+    });
+  });
+
+  it('详细地点层空了就降到次要地区层', () => {
+    // 「新宿区」下有详细地点，「东京都」里造一个没有详细地点的次要地区
+    expect(resolveLanding(rows, cols, { major: '东京都', minor: '尚未录入的区' })).toEqual({
+      kind: 'major', major: '东京都',
+    });
+  });
+
+  it('两层都空就回世界层，而不是落在一张空图上', () => {
+    expect(resolveLanding(rows, cols, { major: '无此省', minor: '无此镇' })).toEqual({
+      kind: 'world',
+    });
+  });
+
+  it('取不到当前地区（别的模板没有全局数据表）时回世界层', () => {
+    expect(resolveLanding(rows, cols, {})).toEqual({ kind: 'world' });
+    expect(resolveLanding(rows, cols, { minor: '橡木镇' })).toEqual({ kind: 'world' });
+  });
+
+  it('地区名两端的空白不影响匹配 —— AI 写的值常带空格', () => {
+    expect(resolveLanding(rows, cols, { major: ' 青木省 ', minor: ' 橡木镇 ' })).toEqual({
+      kind: 'minor', major: '青木省', minor: '橡木镇',
+    });
   });
 });

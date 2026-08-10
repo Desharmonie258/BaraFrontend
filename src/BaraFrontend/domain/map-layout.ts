@@ -249,6 +249,34 @@ export function filterByLevel<T extends CellRow>(
   return rows.filter((r) => !isOverview(r) && get(r, cols.minor) === level.minor);
 }
 
+/**
+ * 落地层级 —— 打开地图时停在哪一层（1.11）。
+ *
+ * 想落在玩家脚下那一层（详细地点），但那一层**可能一个点都没有**：
+ * 剧情刚到一个新地区、AI 还没录入任何详细地点，都会落到一张空图 ——
+ * 那比落在世界层更让人摸不着头脑（用户会以为地图坏了）。
+ *
+ * 所以逐级往上降，取第一个真有点的层级：详细地点 → 次要地区 → 世界。
+ * 主要/次要地区名取不到（别的模板没有全局数据表）时直接回世界层。
+ */
+export function resolveLanding<T extends CellRow>(
+  rows: readonly T[],
+  cols: HierarchyColumns,
+  current: { major?: string; minor?: string },
+): MapLevel {
+  const major = current.major?.trim();
+  const minor = current.minor?.trim();
+
+  const candidates: MapLevel[] = [];
+  if (major && minor) candidates.push({ kind: 'minor', major, minor });
+  if (major) candidates.push({ kind: 'major', major });
+
+  for (const level of candidates) {
+    if (filterByLevel(rows, cols, level).length > 0) return level;
+  }
+  return { kind: 'world' };
+}
+
 /** 从当前层级点进某个点后到达的层级；已是最底层则返回 null */
 export function drillInto(level: MapLevel, name: string): MapLevel | null {
   if (level.kind === 'world') return { kind: 'major', major: name };

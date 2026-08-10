@@ -5,9 +5,15 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { readVariables, toTree } from '../src/BaraFrontend/data/variable-gateway';
 
 function clear(): void {
-  for (const k of ['getVariables', 'eventEmit', 'eventOn', 'Mvu']) {
+  for (const k of ['getVariables', 'eventEmit', 'eventOn', 'Mvu', 'SillyTavern']) {
     delete (window as any)[k];
   }
+}
+
+/** chatMetadata.variables —— LWB / ERA 的痕迹都留在这里 */
+function withChatVars(vars: Record<string, unknown>, metaExtra: Record<string, unknown> = {}) {
+  (window as any).SillyTavern = { chatMetadata: { variables: vars, ...metaExtra } };
+  (window as any).getVariables = () => vars;
 }
 
 function withMvu(stat: Record<string, unknown>) {
@@ -15,12 +21,17 @@ function withMvu(stat: Record<string, unknown>) {
     getMvuData: () => ({ stat_data: stat, display_data: { a: '甲' } }),
   };
 }
-function withEra() {
+/** 酒馆助手的事件总线 —— 装了就一直在，不是任何框架的判据 */
+function withTavernHelper() {
   (window as any).eventEmit = () => {};
   (window as any).eventOn = () => {};
 }
+function withEra(stat?: Record<string, unknown>) {
+  withTavernHelper();
+  withChatVars(stat ? { ERAMetaData: {}, stat_data: stat } : { ERAMetaData: {} });
+}
 function withLwb(stat: Record<string, unknown>) {
-  (window as any).getVariables = () => ({ stat_data: stat });
+  withChatVars({ LWB_version: 1, stat_data: stat });
 }
 
 beforeEach(clear);
@@ -40,19 +51,36 @@ describe('框架检测', () => {
   it('LWB 优先于其余框架 —— 它在场时另两者的探测会误命中', () => {
     withLwb({ x: 1 });
     withMvu({ hp: 10 });
-    withEra();
+    withTavernHelper();
     expect(readVariables().framework).toBe('lwb');
   });
 
-  it('ERA 框架在但 MVU 有数据时，仍走 MVU', () => {
-    withEra();
+  it('ERA 痕迹在但 MVU 也有数据时，仍走 MVU 之前先认 ERA', () => {
+    withEra({ hp: 1 });
     withMvu({ hp: 10 });
-    expect(readVariables().framework).toBe('mvu');
+    expect(readVariables().framework).toBe('era');
   });
 
-  it('ERA 框架在且 MVU 无数据时判为 ERA', () => {
+  it('chat 变量有 ERAMetaData 才判 ERA，并直接读出 stat_data', () => {
+    withEra({ hp: 3 });
+    const d = readVariables();
+    expect(d.framework).toBe('era');
+    expect(d.stat).toEqual({ hp: 3 });
+  });
+
+  it('ERA 只有元数据、无 stat_data 时，stat 为空交给页面提示异步接口', () => {
     withEra();
-    expect(readVariables().framework).toBe('era');
+    expect(readVariables().stat).toBeNull();
+  });
+
+  it('酒馆助手的 eventEmit/eventOn 不是 ERA 判据 —— 无变量的卡必须是 none', () => {
+    withTavernHelper();
+    expect(readVariables().framework).toBe('none');
+  });
+
+  it('chat 变量只有 stat_data、没有 LWB_* 标记时不判 LWB', () => {
+    withChatVars({ stat_data: { x: 1 } });
+    expect(readVariables().framework).toBe('none');
   });
 
   it('MVU 接口抛错时不冒泡，降级为 none', () => {

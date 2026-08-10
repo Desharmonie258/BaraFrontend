@@ -30,13 +30,15 @@ import type { RuleFamily } from '../../domain/rule-systems';
 import { previewSync, applySync, type SyncPreview } from '../../data/repositories/attribute-sync';
 import { describeBindings } from '../../data/snapshot-repo';
 import {
-  CHARACTERS, PROTAGONIST, SUGGESTIONS, ITEMS, EQUIPMENT, RESOURCES,
+  CHARACTERS, PROTAGONIST, SUGGESTIONS, ITEMS, EQUIPMENT, RESOURCES, GLOBAL, RELATIONS,
 } from '../../domain/sheet-binding';
 import SettingsGroup from '../shell/SettingsGroup.vue';
 import RuleModePicker from '../shell/RuleModePicker.vue';
 import ThemePicker from '../shell/ThemePicker.vue';
 import LicenseNotices from '../shell/LicenseNotices.vue';
 import SettingsRow from '../shell/SettingsRow.vue';
+import PresetSettings from '../components/PresetSettings.vue';
+import ActionSettings from '../components/ActionSettings.vue';
 
 const ui = useUiStore();
 const schema = useSchemaStore();
@@ -47,7 +49,9 @@ const schema = useSchemaStore();
  */
 const bindings = computed(() => {
   void schema.sheets;
-  return describeBindings([CHARACTERS, PROTAGONIST, SUGGESTIONS, ITEMS, EQUIPMENT, RESOURCES]);
+  return describeBindings([
+    CHARACTERS, PROTAGONIST, SUGGESTIONS, ITEMS, EQUIPMENT, RESOURCES, GLOBAL, RELATIONS,
+  ]);
 });
 
 const modeOptions = computed(() => [
@@ -375,6 +379,15 @@ async function onApply(): Promise<void> {
         </NRadioGroup>
       </SettingsRow>
 
+      <!--
+        交互规则紧跟着「点一下是发还是填」：两者管的是同一个动作的两端 ——
+        点什么（规则）与点了之后怎么走（发送方式）。
+      -->
+      <SettingsRow :label="t('actions.title', ui.lang)">
+        <span />
+      </SettingsRow>
+      <ActionSettings :lang="ui.lang" @changed="schema.reload()" />
+
       <SettingsRow
         label="QASmoke"
         :hint="t('settings.qa.hint', ui.lang)"
@@ -458,6 +471,12 @@ async function onApply(): Promise<void> {
           </NTag>
         </span>
       </div>
+
+      <!--
+        预设紧跟着诊断：上面刚说「这几项认不出」，解法就在下一行。
+        分开摆的话，用户看完诊断还得再去别处找工具。
+      -->
+      <PresetSettings :lang="ui.lang" @changed="schema.reload()" />
     </SettingsGroup>
 
     <!-- 关于 -->

@@ -19,22 +19,63 @@ import { readBio, readCharacterSection } from '../../../data/repositories/sheet-
 import type { Lang } from '../../../stores/ui-store';
 import { t } from '../../../i18n';
 import SectionList from './SectionList.vue';
+import EditableValue from '../EditableValue.vue';
 
-const props = defineProps<{ character: CharacterVM; lang: Lang }>();
+const props = defineProps<{
+  character: CharacterVM;
+  lang: Lang;
+  /** 编辑态与写入中标识（1.11） */
+  editing?: boolean;
+  pending?: string | null;
+  /** 刷新令牌：分区数据是 computed 出来的，不给它会变的依赖，写完仍是旧值 */
+  refreshKey?: number;
+}>();
 
-const groups = computed(() => readBio(props.character));
-const chronicle = computed(() => readCharacterSection('chronicle', props.character));
-const intimacy = computed(() => readCharacterSection('intimacy', props.character));
-const relations = computed(() => readCharacterSection('relations', props.character));
+const emit = defineEmits<{
+  setCell: [sheetName: string, rowIndex: number, column: string, value: string];
+}>();
+
+/** 与 SectionList 的 fieldKey 同构，否则 pending 对不上号 */
+function fieldKey(sheetName: string, rowIndex: number, column: string): string {
+  return `${sheetName}#${rowIndex}#${column}`;
+}
+
+/*
+ * 编辑态下把空值字段也读出来 —— 传记里空列是常态（该角色还没展开到那个
+ * 细节），平时整条隐藏是对的，但要填它就得先看得见它。
+ */
+const groups = computed(() => {
+  void props.refreshKey;
+  return readBio(props.character, props.editing);
+});
+const chronicle = computed(() => {
+  void props.refreshKey;
+  return readCharacterSection('chronicle', props.character);
+});
+const intimacy = computed(() => {
+  void props.refreshKey;
+  return readCharacterSection('intimacy', props.character);
+});
+const relations = computed(() => {
+  void props.refreshKey;
+  return readCharacterSection('relations', props.character);
+});
 
 /**
  * 展开的分区。非成人向默认展开，成人向默认收起 ——
  * 并非每次查看角色都需要展开那些内容。
+ *
+ * **每个角色只初始化一次。** 早先这个 watch 直接挂在 `groups` 上，
+ * 而 `groups` 会因为切换编辑态（空字段纳入）与写入刷新而重算 ——
+ * 于是一开编辑，用户展开着的分区就被收了回去。
  */
 const expanded = ref<string[]>([]);
+const initializedFor = ref<number | null>(null);
 watch(
   groups,
   (gs) => {
+    if (gs.length === 0 || initializedFor.value === props.character.rowIndex) return;
+    initializedFor.value = props.character.rowIndex;
     expanded.value = gs.filter((g) => !g.adult).map((g) => g.id);
   },
   { immediate: true },
@@ -78,7 +119,17 @@ const hasAny = computed(
           <dl class="bara-bio__fields">
             <div v-for="f in g.fields" :key="f.label" class="bara-bio__field">
               <dt>{{ f.label }}</dt>
-              <dd>{{ f.text }}</dd>
+              <dd>
+                <!-- 传记字段一律是长文本，给多行框：一行的框里改不动一段人设 -->
+                <EditableValue
+                  v-if="editing"
+                  :value="f.text"
+                  multiline
+                  :pending="pending === fieldKey(f.sheetName, f.rowIndex, f.label)"
+                  @submit="(v) => emit('setCell', f.sheetName, f.rowIndex, f.label, v)"
+                />
+                <template v-else>{{ f.text }}</template>
+              </dd>
             </div>
           </dl>
         </NCollapseItem>
@@ -88,7 +139,13 @@ const hasAny = computed(
         <NDivider class="bara-bio__rule" />
         <section>
           <h3 class="bara-bio__h">{{ t('sheet.section.relations', lang) }}</h3>
-          <SectionList :section="relations" :body-columns="['关系描述']" />
+          <SectionList
+            :section="relations"
+            :body-columns="['关系描述']"
+            :editing="editing"
+            :pending="pending"
+            @set-cell="(...a) => emit('setCell', ...a)"
+          />
         </section>
       </template>
 
@@ -100,6 +157,9 @@ const hasAny = computed(
             :section="chronicle"
             title-column="记录内容"
             :tag-columns="['发生时间', '与今天的关系', '核心记忆']"
+            :editing="editing"
+            :pending="pending"
+            @set-cell="(...a) => emit('setCell', ...a)"
           />
         </section>
       </template>
@@ -112,6 +172,9 @@ const hasAny = computed(
             :section="intimacy"
             title-column="体位/玩法简述"
             :tag-columns="['开始时间', '结束时间', '发生地点', '射精次数', '状态']"
+            :editing="editing"
+            :pending="pending"
+            @set-cell="(...a) => emit('setCell', ...a)"
           />
         </section>
       </template>

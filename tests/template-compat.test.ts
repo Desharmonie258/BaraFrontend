@@ -14,7 +14,9 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { buildSnapshot } from '../src/BaraFrontend/data/snapshot-repo';
+import { buildSnapshot, invalidate } from '../src/BaraFrontend/data/snapshot-repo';
+import { readInteractions } from '../src/BaraFrontend/data/repositories/interaction-repo';
+import { BUILTIN_ACTIONS, isAttachmentSheet } from '../src/BaraFrontend/domain/interaction-rules';
 import { checkSheet } from '../src/BaraFrontend/domain/sheet-health';
 import { availableViews, resolveView } from '../src/BaraFrontend/domain/table-view-policy';
 import { detectMapColumns, layoutMap } from '../src/BaraFrontend/domain/map-layout';
@@ -59,6 +61,8 @@ interface Fixture {
   file: string;
   sheets: SheetLike[];
   snap: ReturnType<typeof buildSnapshot>;
+  /** 注入过数据行的原始对象。交互总览那一节要经由全局 API 走完整读取链 */
+  raw: Record<string, any>;
 }
 
 function load(path: string): Fixture | null {
@@ -70,10 +74,12 @@ function load(path: string): Fixture | null {
     return null;
   }
   if (!isTemplate(raw)) return null;
-  const snap = buildSnapshot(withRows(raw));
+  const withData = withRows(raw);
+  const snap = buildSnapshot(withData);
   return {
     file: path.split(/[\\/]/).pop()!,
     snap,
+    raw: withData,
     sheets: [...snap.values()].map((s) => ({ key: s.key, name: s.name, headers: s.headers })),
   };
 }
@@ -293,5 +299,71 @@ describe('跨模板兼容 · 具名', () => {
   const autumn = fixture('秋枫暮霞');
   it.skipIf(!autumn)('秋枫暮霞：自定义物品表名靠展示名命中', () => {
     expect(names(ITEMS, autumn!)).toEqual(['重要物品表']);
+  });
+});
+
+/**
+ * 交互总览在真实模板上的表现。
+ *
+ * 单元测试造的表结构再像也是造的 —— 「一个角色被刷成十几个可交互对象」
+ * 这个错正是在真机上才看出来的：角色资源表的第一列是「持有人」，
+ * 退回「第一个非 row_id 列」时把外键当成了名字。
+ *
+ * 这一节拿真实模板横着跑，锁住的是**同一个对象不重复**这条底线。
+ */
+describe('交互总览', () => {
+  /*
+   * 经由全局 API 走完整读取链，与其余仓储测试同一套喂法 ——
+   * 为测试往 snapshot-repo 开一个注入口，那个口子在生产代码里永远没人用。
+   */
+  function objectsOf(f: Fixture) {
+    (globalThis as any).window = globalThis;
+    (globalThis as any).AutoCardUpdaterAPI = { getCurrentData: () => f.raw };
+    invalidate();
+    try {
+      return readInteractions(BUILTIN_ACTIONS);
+    } finally {
+      delete (globalThis as any).AutoCardUpdaterAPI;
+      invalidate();
+    }
+  }
+
+  it('任何模板里，同一分区都不出现重名对象', () => {
+    for (const f of FIXTURES) {
+      for (const section of objectsOf(f)) {
+        const names = section.objects.map((o) => o.name);
+        expect(new Set(names).size, `${f.file} / ${section.kind}`).toBe(names.length);
+      }
+    }
+  });
+
+  it('任何模板里，都不会把附表的每一行当成一个对象', () => {
+    for (const f of FIXTURES) {
+      const sheets = objectsOf(f).flatMap((s) => s.objects.map((o) => o.sheetName));
+      for (const name of new Set(sheets)) {
+        expect(isAttachmentSheet(name), `${f.file} / ${name}`).toBe(false);
+      }
+    }
+  });
+
+  const own = fixture(OWN);
+  it.skipIf(!own)('自家 1.1 模板：附表一张都不进来，正经对象表照收', () => {
+    const sheets = new Set(
+      objectsOf(own!).flatMap((s) => s.objects.map((o) => o.sheetName)),
+    );
+    // 这几张的每一行都是「某个角色的一项数据」，不是一个可交互对象
+    for (const attachment of ['角色资源表', '重要角色生理', '重要角色心理', '关系表', '纪要表']) {
+      expect(sheets.has(attachment), attachment).toBe(false);
+    }
+    /*
+     * 该收的照收。**不断言角色表** —— 夹具把每列造成 `${列名}-值N`，
+     * NPC表与角色表的姓名列因此撞名，被同名去重合并成一个。
+     * 那是造数据的假象（真实存档里两张表不会有同名角色），
+     * 不值得为它放宽去重。
+     */
+    const joined = [...sheets].join('、');
+    for (const real of ['世界地图点', '物品表', '装备表', '备忘录表', '技能表']) {
+      expect(joined).toContain(real);
+    }
   });
 });

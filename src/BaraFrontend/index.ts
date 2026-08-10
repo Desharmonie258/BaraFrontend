@@ -19,6 +19,8 @@ import { isDbPresent, canRead, canWrite, onTableUpdate } from './data/db-gateway
 import { describeSheets } from './data/snapshot-repo';
 import { PLUGIN_VERSION } from './domain/plugin-license';
 import { waitForDatabase } from './data/db-ready';
+import { loadPreset, activePreset } from './data/preset-store';
+import { loadActionPreset, isCustomActive } from './data/action-preset-store';
 import { useSchemaStore, __resetSchemaStore } from './stores/schema-store';
 import { useUiStore, __resetUiStore } from './stores/ui-store';
 
@@ -110,6 +112,9 @@ function diagnose(): Record<string, unknown> {
     expanded: useUiStore().expanded,
     sheets: useSchemaStore().sheets.length,
     version: PLUGIN_VERSION,
+    // 认不出表的报告里，「装没装预设」是必须先排除的一项
+    dashboardPreset: activePreset()?.name ?? null,
+    actionPreset: isCustomActive() ? 'custom' : 'builtin',
     // 结构异常的表单列一份：正常时是空数组，一眼就知道有没有问题
     unhealthy: sheets.filter((s) => s.health !== 'ok').map((s) => `${s.name}:${s.health}`),
     tables: sheets,
@@ -135,6 +140,14 @@ function init(): void {
     console.error(`${TAG} 未找到全局 Vue，脚本无法运行。请确认酒馆助手版本。`);
     return;
   }
+
+  /*
+   * 仪表盘预设要在读表之前挂上，否则首次 resolveSheets 走的是没有兜底的
+   * 那条路，识别结果会比预设生效后少一批表，界面先闪一次「认不出」。
+   */
+  loadPreset();
+  // 交互规则没有自定义时回落到内置默认，所以这里不必判断成败
+  loadActionPreset();
 
   mountApp(App);
 

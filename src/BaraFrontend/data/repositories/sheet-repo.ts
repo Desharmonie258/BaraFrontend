@@ -116,25 +116,48 @@ export function readTabSections(tab: SheetTab, character: CharacterVM): Section[
     .filter((s): s is Section => s !== null && s.rows.length > 0);
 }
 
+export interface BioField {
+  label: string;
+  text: string;
+  /**
+   * 写回定位（1.11）。
+   *
+   * 传记把生理与心理**两张表**合并成一份连续内容，读的时候不必区分，
+   * 写的时候必须区分 —— 光有列名不知道该改哪张表的哪一行。
+   */
+  sheetName: string;
+  rowIndex: number;
+}
+
 export interface BioGroup {
   id: string;
   volatile: boolean;
   adult: boolean;
   /** 只含非空字段。空值列整条隐藏（§8.3b）—— 一屏「暂无」会让页面显得残缺。 */
-  fields: Array<{ label: string; text: string }>;
+  fields: BioField[];
 }
 
 /**
  * 传记页的分组视图：把生理与心理两表合并成连续的阅读内容，
  * 不做表格罗列，也不显示两表的分界（§8.3b）。
+ *
+ * `includeEmpty` 供编辑态用：空值列平时整条隐藏，但要填它就得先看得见它。
  */
-export function readBio(character: CharacterVM): BioGroup[] {
-  const merged: Record<string, string> = {};
+export function readBio(character: CharacterVM, includeEmpty = false): BioGroup[] {
+  const merged: Record<string, BioField> = {};
   for (const id of ['physiology', 'psychology']) {
     const s = readCharacterSection(id, character);
-    if (!s?.rows.length) continue;
-    for (const [k, v] of Object.entries(s.rows[0].cells)) {
-      if (String(v ?? '').trim()) merged[k] = String(v).trim();
+    const row = s?.rows[0];
+    if (!s || !row) continue;
+    for (const [k, v] of Object.entries(row.cells)) {
+      const text = String(v ?? '').trim();
+      /*
+       * 有值的盖过没值的；两边都有值时后者（心理表）胜 —— 与合并前的行为一致。
+       * 都没值时记下第一次见到的来源，编辑态才知道该往哪张表写。
+       */
+      if (text || !merged[k]) {
+        merged[k] = { label: k, text, sheetName: s.sheetName, rowIndex: row.rowIndex };
+      }
     }
   }
 
@@ -143,14 +166,17 @@ export function readBio(character: CharacterVM): BioGroup[] {
     volatile: !!g.volatile,
     adult: !!g.adult,
     fields: g.columns
-      .filter((c) => merged[c])
-      .map((c) => ({ label: c, text: merged[c] })),
+      .filter((c) => merged[c] && (includeEmpty || merged[c].text))
+      .map((c) => merged[c]),
   })).filter((g) => g.fields.length > 0);
 }
 
 export interface ResourceVM {
   /** 稳定标识，来自「资源ID」列 */
   id: string;
+  /** 写回定位：所在表的展示名与行号（0 为表头）。手改资源时要用。 */
+  sheetName: string;
+  rowIndex: number;
   name: string;
   current: number | null;
   max: number | null;
@@ -182,6 +208,8 @@ export function readResources(character: CharacterVM): ResourceVM[] {
     const id = (r.cells['资源ID'] ?? '').trim();
     return {
       id,
+      sheetName: s.sheetName,
+      rowIndex: r.rowIndex,
       name: r.cells['显示名'] || id || '—',
       current,
       max,

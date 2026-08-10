@@ -232,3 +232,79 @@ describe('资源', () => {
     expect(readResources(char())[0].percent).toBeNull();
   });
 });
+
+/**
+ * 传记的写回定位与空字段（1.11）。
+ *
+ * 传记把生理与心理**两张表**合并成一份连续内容，读的时候不必区分，
+ * 写的时候必须区分 —— 每个字段得知道自己来自哪张表的哪一行。
+ */
+describe('传记的编辑支持', () => {
+  function mockBio() {
+    mock({
+      sheet_physiology: {
+        name: '重要角色生理',
+        content: [
+          ['row_id', '姓名', '相貌', '常用发型', '体毛'],
+          ['1', '御苑', '清瘦', '', ''],
+        ],
+      },
+      sheet_psychology: {
+        name: '重要角色心理',
+        content: [
+          ['row_id', '姓名', '性格主色调', '近期情绪状态'],
+          ['1', '御苑', '沉静', '焦躁'],
+        ],
+      },
+    });
+  }
+
+  it('每个字段带着自己那张表与行号', () => {
+    mockBio();
+    const groups = readBio(char({ name: '御苑' }));
+    const all = groups.flatMap((g) => g.fields);
+
+    const 相貌 = all.find((f) => f.label === '相貌')!;
+    expect(相貌.sheetName).toBe('重要角色生理');
+    expect(相貌.rowIndex).toBe(1);
+
+    const 主色调 = all.find((f) => f.label === '性格主色调')!;
+    expect(主色调.sheetName).toBe('重要角色心理');
+  });
+
+  it('默认跳过空字段 —— 一屏「暂无」会让页面显得残缺', () => {
+    mockBio();
+    const labels = readBio(char({ name: '御苑' })).flatMap((g) => g.fields.map((f) => f.label));
+    expect(labels).toContain('相貌');
+    expect(labels).not.toContain('常用发型');
+  });
+
+  it('includeEmpty 把空字段也带出来，且定位仍然正确 —— 编辑态要填它们', () => {
+    mockBio();
+    const all = readBio(char({ name: '御苑' }), true).flatMap((g) => g.fields);
+    const 发型 = all.find((f) => f.label === '常用发型');
+    expect(发型).toBeDefined();
+    expect(发型!.text).toBe('');
+    // 空字段也得知道往哪张表写，否则编辑态下点了没反应
+    expect(发型!.sheetName).toBe('重要角色生理');
+    expect(发型!.rowIndex).toBe(1);
+  });
+
+  it('两表都有同名列时，有值的那份胜出', () => {
+    mock({
+      sheet_physiology: {
+        name: '重要角色生理',
+        content: [['row_id', '姓名', '相貌'], ['1', '御苑', '清瘦']],
+      },
+      sheet_psychology: {
+        name: '重要角色心理',
+        content: [['row_id', '姓名', '相貌'], ['1', '御苑', '']],
+      },
+    });
+    const 相貌 = readBio(char({ name: '御苑' }), true)
+      .flatMap((g) => g.fields)
+      .find((f) => f.label === '相貌')!;
+    expect(相貌.text).toBe('清瘦');
+    expect(相貌.sheetName).toBe('重要角色生理');
+  });
+});

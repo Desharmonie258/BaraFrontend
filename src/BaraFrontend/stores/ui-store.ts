@@ -23,7 +23,9 @@ export type Destination =
   | { kind: 'table'; sheetKey: string }
   | { kind: 'settings' }
   | { kind: 'review' }
-  | { kind: 'variables' };
+  | { kind: 'variables' }
+  /** 交互总览（1.11）：把每张表的每一行摊成一个能点的对象 */
+  | { kind: 'interactions' };
 
 export interface UiSettings {
   theme: ThemeId;

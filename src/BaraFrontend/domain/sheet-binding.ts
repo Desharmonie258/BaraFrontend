@@ -119,6 +119,34 @@ export const EQUIPMENT: SheetSpec = {
   names: ['装备表'],
 };
 
+/**
+ * 全局状态（1.11）—— 当前时间与所在地点，仪表盘的全局面板用。
+ *
+ * 指纹只要「当前时间」一列。这张表在各家模板里叫法差得远（全局数据表、
+ * 世界状态表、时间地点表），但凡有这个概念的模板都会有一列时间；
+ * 要求更多列同时命中会把大多数模板挡在外面，而这块面板认不出就整块消失，
+ * 误命中的代价只是显示一个空面板 —— 与角色表那种「显示错人」不同。
+ */
+export const GLOBAL: SheetSpec = {
+  id: 'global',
+  keys: ['sheet_global', 'sheet_global_data'],
+  names: ['全局数据表', '全局数据', '世界状态表', '全局状态表'],
+  fingerprint: ['当前时间'],
+};
+
+/**
+ * 人物关系（1.11）—— 关系图面板用。
+ *
+ * 指纹要求两个角色列同时存在：只有一列角色名的表（大事记、日记）与它
+ * 列结构相近，而关系图误认出这类表会画出一张**看起来正常的错误图**。
+ */
+export const RELATIONS: SheetSpec = {
+  id: 'relations',
+  keys: ['sheet_relations'],
+  names: ['关系表', '人物关系表', '关系网络表'],
+  fingerprint: ['角色A', '角色B'],
+};
+
 /** 角色资源。九份外部模板无一具备 —— 认不出时该让资源能力整体消失。 */
 export const RESOURCES: SheetSpec = {
   id: 'resources',

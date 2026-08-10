@@ -107,6 +107,70 @@ export function captureBaseline(): boolean {
   return writeVar({ contextId: contextId(), at: Date.now(), data: current as Snapshot });
 }
 
+/**
+ * 把基线里的一个格子改成新值。
+ *
+ * 手改表格后调用。**不能用 `captureBaseline()` 代替** —— 那是整库重拍，
+ * 会把 AI 这一轮尚未审核的改动一并吞进基线，用户再也看不到它们改了什么。
+ * 只补手改的那一格，AI 的未审改动仍留在 diff 里。
+ *
+ * 没有基线时返回 false 而不是建立基线：用户还没开始审核，不该由一次
+ * 手改替他决定从哪里开始比。
+ *
+ * 行号沿用数据库本体口径（0 为表头），`Sheet.content` 恰好同口径。
+ */
+export function patchBaselineCell(
+  sheetKey: string,
+  rowIndex: number,
+  column: string,
+  value: string,
+): boolean {
+  const baseline = loadBaseline();
+  const sheet = baseline?.data?.[sheetKey];
+  if (!baseline || !sheet || !Array.isArray(sheet.content) || sheet.content.length === 0) {
+    return false;
+  }
+  const col = sheet.content[0]?.indexOf(column) ?? -1;
+  const row = sheet.content[rowIndex];
+  // 基线里没有这一列或这一行：多半是基线建立后表结构变了，补不了就别补
+  if (col < 0 || !Array.isArray(row)) return false;
+
+  row[col] = value;
+  return writeVar(baseline);
+}
+
+/**
+ * 把一次手动加行/删行同步进基线。
+ *
+ * 与 `patchBaselineCell` 同一个理由：手改不该出现在「AI 这轮改了什么」里。
+ * 行级操作还多一层麻烦 —— 删掉一行会让它后面每一行的行号都往前挪，
+ * 基线不跟着删的话，diff 会把后面所有行报成「改了」。
+ *
+ * `row` 为 undefined 表示删除该行；给了 `row` 则在表尾追加。
+ * 追加只支持表尾，因为数据库本体的 `insertRow` 也只能追加。
+ */
+export function patchBaselineRow(
+  sheetKey: string,
+  rowIndex: number,
+  row?: readonly string[],
+): boolean {
+  const baseline = loadBaseline();
+  const sheet = baseline?.data?.[sheetKey];
+  if (!baseline || !sheet || !Array.isArray(sheet.content) || sheet.content.length === 0) {
+    return false;
+  }
+
+  if (row) {
+    sheet.content.push([...row]);
+    return writeVar(baseline);
+  }
+
+  // 0 是表头，删它会让整张表在基线里错位一列
+  if (rowIndex <= 0 || rowIndex >= sheet.content.length) return false;
+  sheet.content.splice(rowIndex, 1);
+  return writeVar(baseline);
+}
+
 /** 清除基线。清除后视为「尚未建立」，不再报变更。 */
 export function clearBaseline(): boolean {
   return writeVar(null);

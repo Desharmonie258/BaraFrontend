@@ -84,6 +84,24 @@ export const FUNCTION_ICONS: Record<string, Component> = {
   dashboard: Board24Regular,
   review: ArrowSwap24Regular,
   variables: Code24Regular,
+  interactions: Flash24Regular,
+};
+
+/**
+ * 交互总览的分区图标（1.11）。
+ *
+ * 键与 `domain/interaction-rules` 的 `SectionKind` 一一对应 ——
+ * 少一个键就会在那个分区留一个空图标位。
+ */
+export const SECTION_ICONS: Record<string, Component> = {
+  character: People24Regular,
+  map: Map24Regular,
+  item: Backpack24Regular,
+  equipment: Box24Regular,
+  task: ClipboardTaskListLtr24Regular,
+  skill: Sparkle24Regular,
+  faction: PeopleTeam24Regular,
+  generic: Document24Regular,
 };
 
 /**

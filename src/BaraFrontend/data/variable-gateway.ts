@@ -3,13 +3,15 @@
  *
  * 移植自骰子系统的 MvuModule。**检测顺序照搬，不要调整**：
  *
- *   LWB → ERA（且当前聊天确有数据）→ MVU → ERA（框架在但无数据）→ MVU
+ *   LWB → ERA（当前聊天确有 ERA 数据）→ MVU → none
  *
- * 顺序里两处不显然的地方：
- * - LWB 排最前：它需要特殊处理，且它的框架在场时另两者的探测会误命中。
- * - ERA 要求「框架存在**且**当前聊天有数据」才优先。ERA 的框架是全局的，
- *   只看框架在不在，会把用 MVU 的聊天也判成 ERA。框架在但无数据时
- *   （新建聊天）再回落到 ERA，因为那时确实该用它。
+ * 全部判据都必须是**当前聊天**的痕迹，不能是「扩展装没装」：
+ * - 酒馆助手的 `eventEmit`/`eventOn`、LWB 的 `LWB_Guard` 都是全局的，
+ *   装上就一直在，拿它们当判据会把所有没有变量的卡都判成对应框架。
+ * - LWB 排最前：它需要特殊处理，且它在场时另两者的探测会误命中。
+ *   但必须有 `LWB_*` 标记 —— 光看 `stat_data` 会把 ERA 卡抢过来。
+ * - ERA 认 `ERAMetaData` 这个保留键；数据本身在 chat 变量的 `stat_data` 下，
+ *   能直接读到就一并返回，读不到再交给页面提示走异步接口。
  *
  * 本模块只读不写：变量是角色卡作者的领域，插件擅自改写会破坏卡的逻辑。
  */
@@ -51,8 +53,25 @@ function pick<T>(name: string): T | null {
 
 /* ── 各框架的探测 ───────────────────────────────────────── */
 
+/** 当前聊天的 metadata，取不到时返回空对象 */
+function chatMeta(): Record<string, unknown> {
+  const meta = pick<any>('SillyTavern')?.chatMetadata;
+  return meta && typeof meta === 'object' ? (meta as Record<string, unknown>) : {};
+}
+
+/** 当前聊天的 chat 变量（= chatMetadata.variables），取不到时返回空对象 */
+function chatVars(): Record<string, unknown> {
+  const vars = chatMeta().variables;
+  return vars && typeof vars === 'object' ? (vars as Record<string, unknown>) : {};
+}
+
 function lwbData(): Record<string, unknown> | null {
-  // LWB（小白X）把数据挂在聊天变量的固定键下
+  // LWB_Guard 装了就一直在，`stat_data` 又和 ERA 撞键 —— 只有 LWB_* 标记算数
+  const marked = [...Object.keys(chatMeta()), ...Object.keys(chatVars())].some(k =>
+    /^lwb_/i.test(k),
+  );
+  if (!marked) return null;
+
   const getVariables = pick<(o?: unknown) => Record<string, unknown>>('getVariables');
   if (typeof getVariables !== 'function') return null;
   try {
@@ -64,9 +83,17 @@ function lwbData(): Record<string, unknown> | null {
   }
 }
 
-function eraAvailable(): boolean {
-  // ERA 以事件总线为标志
-  return typeof pick('eventEmit') === 'function' && typeof pick('eventOn') === 'function';
+/**
+ * ERA 在 chat 变量里留 `ERAMetaData` 这个保留键。
+ *
+ * 不用 `eventEmit`/`eventOn` 判断 —— 那是酒馆助手的全局函数，
+ * 一直都在，用它会把所有没变量的卡判成 ERA。
+ */
+function eraData(): { stat: Record<string, unknown> | null } | null {
+  const vars = chatVars();
+  if (vars.ERAMetaData === undefined) return null;
+  const stat = vars.stat_data;
+  return { stat: stat && typeof stat === 'object' ? (stat as Record<string, unknown>) : null };
 }
 
 function mvuData(): { stat: Record<string, unknown>; display: Record<string, unknown> } | null {
@@ -92,11 +119,10 @@ export function readVariables(): VariableData {
   const lwb = lwbData();
   if (lwb) return { framework: 'lwb', stat: lwb, display: {} };
 
-  const era = eraAvailable();
-  const mvu = mvuData();
+  const era = eraData();
+  if (era) return { framework: 'era', stat: era.stat, display: {} };
 
-  // ERA 框架在、且 MVU 拿不到数据时，认定为 ERA
-  if (era && !mvu) return { framework: 'era', stat: null, display: {} };
+  const mvu = mvuData();
   if (mvu) return { framework: 'mvu', stat: mvu.stat, display: mvu.display };
 
   return { framework: 'none', stat: null, display: {} };

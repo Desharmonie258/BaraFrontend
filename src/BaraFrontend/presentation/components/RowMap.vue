@@ -51,6 +51,13 @@ const props = defineProps<{
   yColumn: string;
   /** 接壤关系列。本地地图表没有这一列，此时只画点 */
   adjacencyColumn?: string;
+  /**
+   * 落地层级 —— 打开时停在哪一层。
+   *
+   * 由上层从全局数据表的「当前主要/次要地区」算出，通常是玩家脚下那一层。
+   * 不传则落在世界层。
+   */
+  initialLevel?: MapLevel;
   lang: Lang;
 }>();
 
@@ -59,16 +66,46 @@ const props = defineProps<{
  */
 const hierarchy = computed(() => detectHierarchy(props.columns));
 
-const level = ref<MapLevel>({ kind: 'world' });
+/**
+ * 落地层级。
+ *
+ * 默认落在**玩家此刻所在的那一层详细地点**，而不是世界层：
+ * 打开地图九成是想看「我周围有什么」，从世界层点两次才到那里。
+ * 起点由上层从全局数据表算好传进来（组件不查全局数据表，见顶部说明）。
+ *
+ * 传不进来（别的模板没有全局数据表、或那几列是空的）就回到世界层 ——
+ * 落在一个猜出来的地区比落在最外层更让人摸不着头脑。
+ */
+function landing(): MapLevel {
+  return props.initialLevel ?? { kind: 'world' };
+}
+
+const level = ref<MapLevel>(landing());
 
 /*
- * 换表时回到最外层。不重置的话，从一张表的「橡木镇」切到另一张表，
+ * 换表时回到落地层级。不重置的话，从一张表的「橡木镇」切到另一张表，
  * 会停在一个当前表里根本不存在的层级上，画出一张空图。
  */
 watch(
   () => props.columns,
   () => {
-    level.value = { kind: 'world' };
+    level.value = landing();
+  },
+);
+
+/*
+ * 剧情把玩家挪到别处时跟着走。**只在用户还停在上一个落地点时才动** ——
+ * 他正翻着别的地区，脚下一换就被拽回去，那是抢方向盘。
+ */
+watch(
+  () => props.initialLevel,
+  (next, prev) => {
+    if (!next) return;
+    const stillAtLanding =
+      !prev ||
+      (prev.kind === level.value.kind &&
+        JSON.stringify(prev) === JSON.stringify(level.value));
+    if (stillAtLanding) level.value = next;
   },
 );
 

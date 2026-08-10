@@ -148,6 +148,22 @@ export interface ResolvedSheet {
 }
 
 /**
+ * 仪表盘预设的兜底识别（1.11）。
+ *
+ * 注册点而非直接依赖：预设存在酒馆变量里，由 presentation 层管理，
+ * 而 snapshot-repo 是纯数据层，不该反过来依赖它。
+ *
+ * **只在内置三通道全不中时才调**。内置绑定经过十份真实模板的回归测试，
+ * 用户手填的关键词不该有机会盖过它 —— 那等于把验证过的规则换成猜的。
+ */
+type PresetFallback = (spec: SheetSpec, all: readonly SheetSnapshot[]) => SheetSnapshot[];
+let presetFallback: PresetFallback | null = null;
+
+export function setPresetFallback(fn: PresetFallback | null): void {
+  presetFallback = fn;
+}
+
+/**
  * 按识别规格查表，走 key / 展示名 / 列名指纹三条通道（见 domain/sheet-binding）。
  *
  * 这是比 findSheetsByName 更全的入口：只按展示名匹配，会漏掉重制过 key
@@ -156,10 +172,23 @@ export interface ResolvedSheet {
 export function resolveSheets(spec: SheetSpec): ResolvedSheet[] {
   const all = [...getSnapshot().values()];
   const byKey = new Map(all.map((s) => [s.key, s]));
-  return matchSheets(spec, all).flatMap((m) => {
+  const built = matchSheets(spec, all).flatMap((m) => {
     const sheet = byKey.get(m.key);
     return sheet ? [{ sheet, via: m.via }] : [];
   });
+  if (built.length > 0 || !presetFallback) return built;
+
+  /*
+   * 内置三通道全不中，交给预设。标为 fingerprint 通道 ——
+   * 它与指纹同性质：**推测**，诊断面板会据此标注「推测」，
+   * 万一认错了，那行标注是用户唯一的线索。
+   */
+  try {
+    return presetFallback(spec, all).map((sheet) => ({ sheet, via: 'fingerprint' as MatchVia }));
+  } catch (e) {
+    console.warn('[蔷薇前端] 仪表盘预设匹配失败', e);
+    return [];
+  }
 }
 
 /** 取符合规格的第一张表。用于本就唯一的表（主角信息等）。 */

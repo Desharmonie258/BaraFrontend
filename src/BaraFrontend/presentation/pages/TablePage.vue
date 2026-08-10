@@ -6,20 +6,40 @@
  * 网格模式在窄屏必然横向溢出。卡片把横向的列压成纵向字段列表。
  *
  * 模式选择按表记忆 —— 不同表适合的模式不同，全局设置一刀切不合适。
+ *
+ * ## 手改分两档（1.11）
+ *
+ * - **平时**：只有 `domain/enum-policy` 放行的枚举列可点（默认仅 NPC 表的
+ *   归档状态）。这是 1.1 起的行为，不该因为多了编辑功能就变样。
+ * - **编辑模式**：整张表每一格都能改，还能加行删行。
+ *
+ * 分两档而不是一律放开，是因为绝大多数时候用户在**看**表。满屏输入框会把
+ * 浏览变成填表单，也让人分不清哪些值是 AI 写的、哪些是自己改的。
  */
-import { computed, ref, watch } from 'vue';
-import { NRadioGroup, NRadioButton, NInput, NAlert, NEmpty, NSkeleton } from 'naive-ui';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import {
+  NRadioGroup, NRadioButton, NInput, NAlert, NEmpty, NSkeleton, NButton, NIcon, NPopconfirm,
+} from 'naive-ui';
 import { useUiStore } from '../../stores/ui-store';
 import { useSchemaStore } from '../../stores/schema-store';
 import { canRead } from '../../data/db-gateway';
-import { readPage, updateCell, type TableRow } from '../../data/repositories/table-repo';
+import { readAll, readPage, type TableRow } from '../../data/repositories/table-repo';
+import { canEdit, writeCell, addRow, removeRow } from '../../data/repositories/cell-editor';
+import { watchGeneration, isGenerating, onGenerationChange } from '../../data/generation-watch';
+import { ICONS } from '../icons';
 import { getSheet } from '../../data/snapshot-repo';
 import { replaceUserPlaceholders } from '../../data/persona';
 import { t } from '../../i18n';
 import { isEnumEditable } from '../../domain/enum-policy';
 import { checkSheet, isRenderable } from '../../domain/sheet-health';
 import { availableViews, resolveView, type ViewMode } from '../../domain/table-view-policy';
-import { detectMapColumns } from '../../domain/map-layout';
+import {
+  detectMapColumns, detectHierarchy, resolveLanding, type MapLevel,
+} from '../../domain/map-layout';
+import { currentRegions } from '../../data/repositories/global-repo';
+import { actionsForSheet, type ActionItem } from '../../domain/interaction-rules';
+import { activeActions } from '../../data/action-preset-store';
+import { runAction, previewAction } from '../../data/repositories/interaction-runner';
 import RowCard from '../components/RowCard.vue';
 import RowTable from '../components/RowTable.vue';
 import RowCalendar from '../components/RowCalendar.vue';
@@ -31,10 +51,52 @@ const ui = useUiStore();
 const schema = useSchemaStore();
 
 const rows = ref<TableRow[]>([]);
+/**
+ * 地图视图专用的整表行。
+ *
+ * 地图不能吃分页与关键字过滤后的行，那会同时砍掉两样东西：
+ *
+ * - **下层的点** —— 概览行按 row_id 排在前面、详细地点不断追加在后面，
+ *   一旦总行数超过一页，下钻到详细地点就是一张空图
+ * - **边** —— `collectEdges` 要求一条边两端都在点集里（否则会画出悬空线），
+ *   对端只要落在页外，整条接壤关系就消失
+ *
+ * 两者都不是「少看几行」，而是功能看起来坏了，所以地图单独整表读。
+ * 只有确实是地图表才读，别的表不必多拷一份全量数据。
+ */
+const mapRows = ref<TableRow[]>([]);
 const total = ref(0);
 const loading = ref(false);
 const notReady = ref(false);
 const keyword = ref('');
+
+/* ── 手改（1.11）─────────────────────────────────────────── */
+
+const writable = ref(false);
+/** AI 正在生成 —— 这一轮的表格更新会盖掉手改，编辑入口先收起来 */
+const generating = ref(false);
+/** 编辑模式。**按表记忆没有意义** —— 它是一次操作的状态，不是偏好 */
+const editMode = ref(false);
+
+/** 编辑入口开不开：写入通道在，且 AI 没在生成 */
+const canEditNow = computed(() => writable.value && !generating.value);
+
+/* 不能改了就退出编辑态，否则留着一屏改不动的输入框 */
+watch(canEditNow, (v) => { if (!v) editMode.value = false; });
+/* 换表时也退出：上一张表的编辑态跟到新表上是纯粹的意外 */
+watch(() => props.sheetKey, () => { editMode.value = false; });
+
+let stopWatchGeneration: (() => void) | null = null;
+onMounted(() => {
+  watchGeneration();
+  generating.value = isGenerating();
+  stopWatchGeneration = onGenerationChange((v) => {
+    generating.value = v;
+    // 生成结束意味着 AI 刚写完表，这时重读才看得到新数据
+    if (!v) load();
+  });
+});
+onBeforeUnmount(() => stopWatchGeneration?.());
 
 const sheet = computed(() => schema.get(props.sheetKey));
 
@@ -72,6 +134,51 @@ const dateColumn = computed(() => {
  * 口径在 domain/map-layout，与视图策略和跨模板回归测试共用一份。
  */
 const mapColumns = computed(() => detectMapColumns(sheet.value?.headers ?? []));
+
+/**
+ * 地图的落地层级 —— 打开时停在玩家脚下那一层，而不是世界层。
+ *
+ * 依赖 mapRows：层级里一个点都没有时要逐级往上降（见 resolveLanding），
+ * 而那要拿真实数据判断。无层级列的表（本地地图表）不需要落地层级。
+ */
+const mapLanding = computed<MapLevel | undefined>(() => {
+  const headers = sheet.value?.headers ?? [];
+  const hierarchy = detectHierarchy(headers);
+  if (!hierarchy || mapRows.value.length === 0) return undefined;
+  return resolveLanding(mapRows.value, hierarchy, currentRegions());
+});
+
+/**
+ * 这张表可执行的交互动作（1.11）。
+ *
+ * 按表名匹配一次，整表共用 —— 每行再算一遍是把同一件事做 50 遍。
+ * 附表（角色资源表这类）与没有规则命中的表返回空数组，按钮整列不出现。
+ */
+const rowActions = computed<ActionItem[]>(() =>
+  actionsForSheet(activeActions(), sheet.value?.name ?? ''),
+);
+
+/** 执行一个动作。与交互总览走同一条链路（data/interaction-runner）。 */
+async function onAct(action: ActionItem, name: string): Promise<void> {
+  if (!name) return;
+  notice.value = null;
+  const result = await runAction(action, name, ui.suggestAutoSend);
+
+  if (!result.ok) {
+    notice.value = {
+      tone: 'danger',
+      text: t(result.reason === 'no_composer' ? 'suggest.noComposer' : 'suggest.failed', ui.lang),
+    };
+    return;
+  }
+  notice.value = {
+    tone: 'success',
+    text:
+      result.mode === 'sent'
+        ? t('suggest.sent', ui.lang, { text: result.text })
+        : t('suggest.filled', ui.lang),
+  };
+}
 
 const VIEW_LABEL: Record<ViewMode, string> = {
   card: 'table.view.card',
@@ -126,9 +233,11 @@ const visibleRows = computed(() => {
   );
 });
 
-const rangeText = computed(() =>
-  visibleRows.value.length === 0 ? '0-0' : `1-${visibleRows.value.length}`,
-);
+/* 地图画的是整表，计数就得跟着报整表 —— 报「1-50」会让人以为图上少了东西 */
+const rangeText = computed(() => {
+  const n = viewMode.value === 'map' ? mapRows.value.length : visibleRows.value.length;
+  return n === 0 ? '0-0' : `1-${n}`;
+});
 
 /**
  * 结构判定。**只在加载完成后判**：加载中表头本来就还没有，
@@ -161,6 +270,7 @@ function load(): void {
   if (!canRead()) {
     notReady.value = true;
     rows.value = [];
+    mapRows.value = [];
     return;
   }
   notReady.value = false;
@@ -169,6 +279,8 @@ function load(): void {
     const page = readPage(props.sheetKey, ui.pageSize, 0);
     rows.value = page?.rows ?? [];
     total.value = page?.total ?? 0;
+    mapRows.value = mapColumns.value ? (readAll(props.sheetKey)?.rows ?? []) : [];
+    writable.value = canEdit();
   } finally {
     loading.value = false;
   }
@@ -179,32 +291,84 @@ watch(() => ui.pageSize, load);
 // 表数据被外部改动（AI 填表等）后同步刷新
 watch(() => schema.sheets, load);
 
-/**
- * 写入枚举列。
- *
- * 写入后必须重新读取 —— 快照是值拷贝，不重载界面仍显示旧值。
- * 失败时给出可见提示而非静默，用户才知道该重试。
- */
-async function onSetCell(rowIndex: number, label: string, value: string): Promise<void> {
-  const s = getSheet(props.sheetKey);
-  if (!s || pending.value) return;
-  // 二次把关：界面不该发出这个请求，但写入是不可撤销的，不能只靠界面拦
-  if (!isEnumEditable(s.name, label, ui.qaSmoke)) return;
+/** 字段标识。同名列会出现在多行里，只用列名做 pending 会让整列一起转圈 */
+function fieldKey(rowIndex: number, label: string): string {
+  return `${rowIndex}#${label}`;
+}
 
-  pending.value = label;
+/**
+ * 跑一次写入。
+ *
+ * 写入后必须重新读取 —— 快照是值拷贝，不重载界面仍显示旧值，
+ * 而「界面显示已改、库里其实没改」是最难察觉的一类错：它不报错。
+ *
+ * 串行：`pending` 占位期间不接第二次请求。
+ */
+async function runWrite(
+  key: string,
+  action: () => Promise<{ ok: true; baselineStale: boolean } | { ok: false; message: string }>,
+  successText?: string,
+): Promise<void> {
+  if (pending.value) return;
+  pending.value = key;
   notice.value = null;
   try {
-    const result = await updateCell(s, rowIndex, label, value);
+    const result = await action();
     if (result.ok) {
-      notice.value = { tone: 'success', text: t('table.saved', ui.lang, { label, value }) };
       schema.reload();
       load();
+      notice.value = result.baselineStale
+        ? { tone: 'danger', text: t('card.editBaselineStale', ui.lang) }
+        : successText
+          ? { tone: 'success', text: successText }
+          : null;
     } else {
-      notice.value = { tone: 'danger', text: result.failure.message };
+      notice.value = { tone: 'danger', text: result.message };
     }
   } finally {
     pending.value = null;
   }
+}
+
+/**
+ * 改一个格子。
+ *
+ * 平时只放行 `enum-policy` 认可的枚举列（1.1 起的行为）；编辑模式下整张表
+ * 都能改。两档都在这里把关 —— 界面不该发出越权的请求，但写入不可撤销，
+ * 不能只靠界面拦。
+ */
+function onSetCell(rowIndex: number, label: string, value: string): void {
+  const s = getSheet(props.sheetKey);
+  if (!s) return;
+  if (!editMode.value && !isEnumEditable(s.name, label, ui.qaSmoke)) return;
+  if (editMode.value && !canEditNow.value) return;
+
+  void runWrite(
+    fieldKey(rowIndex, label),
+    () => writeCell({ sheetName: s.name, rowIndex, column: label }, value),
+    t('table.saved', ui.lang, { label, value }),
+  );
+}
+
+/**
+ * 表尾追加一行。**全空行** —— 各表的必填列千差万别，在这里猜要填什么
+ * 只会猜错；加完就地改比先弹一个不知道该填什么的表单顺手。
+ */
+function onAddRow(): void {
+  const s = getSheet(props.sheetKey);
+  if (!s || !canEditNow.value) return;
+  void runWrite('add', () => addRow(s.name, {}), t('table.rowAdded', ui.lang));
+}
+
+/** 删一行。不可撤销，界面上已经过二次确认。 */
+function onRemoveRow(rowIndex: number): void {
+  const s = getSheet(props.sheetKey);
+  if (!s || !canEditNow.value) return;
+  void runWrite(
+    fieldKey(rowIndex, 'remove'),
+    () => removeRow(s.name, rowIndex),
+    t('table.rowRemoved', ui.lang),
+  );
 }
 </script>
 
@@ -226,7 +390,37 @@ async function onSetCell(rowIndex: number, label: string, value: string): Promis
             {{ o.label }}
           </NRadioButton>
         </NRadioGroup>
+        <!--
+          编辑开关。写入通道不可用、或 AI 正在生成时整个不出现 ——
+          给一个点了没用的按钮比没有按钮更糟。
+          地图与日历视图下也不出现：那两种视图画的是聚合结果，不是行。
+        -->
+        <NButton
+          v-if="canEditNow && (viewMode === 'card' || viewMode === 'list')"
+          size="small"
+          :type="editMode ? 'primary' : 'default'"
+          :quaternary="!editMode"
+          :title="t(editMode ? 'table.editDone' : 'table.edit', ui.lang)"
+          :aria-pressed="editMode"
+          @click="editMode = !editMode"
+        >
+          <template #icon>
+            <NIcon :component="editMode ? ICONS.ok : ICONS.edit" />
+          </template>
+        </NButton>
+
+        <NButton
+          v-if="editMode"
+          size="small"
+          :loading="pending === 'add'"
+          @click="onAddRow"
+        >
+          {{ t('table.addRow', ui.lang) }}
+        </NButton>
+
+        <!-- 地图视图不吃关键字（过滤会砍掉边的对端），就别摆一个不生效的搜索框 -->
         <NInput
+          v-if="viewMode !== 'map'"
           v-model:value="keyword"
           type="text"
           :placeholder="t('table.search', ui.lang)"
@@ -298,7 +492,13 @@ async function onSetCell(rowIndex: number, label: string, value: string): Promis
           :enums="enums"
           :editable-enums="editableEnums"
           :pending="pending"
+          :edit-mode="editMode"
+          :actions="rowActions"
+          :action-preview="previewAction"
+          :lang="ui.lang"
           @set-cell="onSetCell"
+          @remove="onRemoveRow"
+          @act="onAct"
         />
       </div>
 
@@ -310,18 +510,33 @@ async function onSetCell(rowIndex: number, label: string, value: string): Promis
         :lang="ui.lang"
       />
 
+      <!-- 地图走整表：分页会砍掉下层的点与边的对端，见 mapRows 的说明 -->
       <RowMap
         v-else-if="viewMode === 'map' && mapColumns"
-        :rows="visibleRows"
+        :rows="mapRows"
         :columns="sheet?.headers ?? []"
         :name-column="mapColumns.name"
         :x-column="mapColumns.x"
         :y-column="mapColumns.y"
         :adjacency-column="mapColumns.adjacency"
+        :initial-level="mapLanding"
         :lang="ui.lang"
       />
 
-      <RowTable v-else :rows="visibleRows" :columns="sheet?.headers ?? []" />
+      <RowTable
+        v-else
+        :rows="visibleRows"
+        :columns="sheet?.headers ?? []"
+        :edit-mode="editMode"
+        :enums="enums"
+        :pending="pending"
+        :actions="rowActions"
+        :action-preview="previewAction"
+        :lang="ui.lang"
+        @set-cell="onSetCell"
+        @remove="onRemoveRow"
+        @act="onAct"
+      />
     </div>
   </div>
 </template>

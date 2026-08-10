@@ -11,7 +11,13 @@ import { CHARACTERS, PROTAGONIST, ITEMS, EQUIPMENT } from '../../domain/sheet-bi
 import { parse, type AttributeEntry } from '../../domain/attribute-codec';
 import { resolveUserName, replaceUserPlaceholders } from '../persona';
 
-const COL = {
+/**
+ * 角色表的列展示名。
+ *
+ * 导出是给写回路径用的（`character-editor`）—— 读用哪个名字，写就得用
+ * 同一个名字，各写一份必然在某次模板改名后只改了一边。
+ */
+export const COL = {
   name: '姓名',
   aliases: '别称',
   identity: '身份',

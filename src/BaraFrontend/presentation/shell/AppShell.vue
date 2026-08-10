@@ -23,6 +23,7 @@ import TablePage from '../pages/TablePage.vue';
 import SettingsPage from '../pages/SettingsPage.vue';
 import ReviewPage from '../pages/ReviewPage.vue';
 import VariablesPage from '../pages/VariablesPage.vue';
+import InteractionPage from '../pages/InteractionPage.vue';
 
 const ui = useUiStore();
 const schema = useSchemaStore();
@@ -41,6 +42,7 @@ const currentTitle = computed(() => {
   if (ui.destination.kind === 'settings') return t('settings.title', ui.lang);
   if (ui.destination.kind === 'review') return t('dest.review', ui.lang);
   if (ui.destination.kind === 'variables') return t('dest.variables', ui.lang);
+  if (ui.destination.kind === 'interactions') return t('dest.interactions', ui.lang);
   // 表名取自模板，不翻译：它属于用户的存档数据（§8.7c）
   return schema.get(ui.destination.sheetKey)?.name ?? t('dest.tables', ui.lang);
 });
@@ -73,6 +75,7 @@ watch(
             <ReviewPage v-else-if="ui.destination.kind === 'review'" />
             <VariablesPage v-else-if="ui.destination.kind === 'variables'" />
             <DashboardPage v-else-if="ui.destination.kind === 'dashboard'" />
+            <InteractionPage v-else-if="ui.destination.kind === 'interactions'" />
             <TablePage
               v-else
               :key="ui.destination.sheetKey"

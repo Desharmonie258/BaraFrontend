@@ -16,9 +16,20 @@
  *   会把卡片撑成一屏噪声。
  * - 枚举列分两种渲染：可编辑的列成一排可点选项；只读的只显示当前值。
  *   哪些可编辑由 domain/enum-policy 决定（默认仅 NPC 表的归档状态）。
+ *
+ * ## 编辑模式（1.11）
+ *
+ * 开着时整张卡每一格都能改，空值字段也不再跳过 —— 值为空时正是最需要
+ * 填它的时候，隐藏起来反而没法操作。枚举列此时放开全部选项，
+ * 不再受 enum-policy 限制：用户已经明确表示「我要改这张表」。
  */
 import { computed } from 'vue';
-import { NCard, NThing, NRow, NCol, NButton, NSpace, NTag, NDivider } from 'naive-ui';
+import { NCard, NThing, NRow, NCol, NButton, NSpace, NTag, NDivider, NIcon, NPopconfirm } from 'naive-ui';
+import { ICONS } from '../icons';
+import { t } from '../../i18n';
+import type { Lang } from '../../stores/ui-store';
+import EditableValue from './EditableValue.vue';
+import type { ActionItem } from '../../domain/interaction-rules';
 import type { TableRow } from '../../data/repositories/table-repo';
 
 const props = defineProps<{
@@ -29,14 +40,38 @@ const props = defineProps<{
   enums?: Record<string, string[]>;
   /** 其中允许编辑的列展示名。未列出的只读展示当前值。 */
   editableEnums?: string[];
-  /** 正在写入的列，写入期间禁用该列的按钮避免重复提交 */
+  /** 正在写入的字段标识（`行号#列名`），写入期间禁用该字段避免重复提交 */
   pending?: string | null;
+  /** 编辑模式：整张卡可改，且不再跳过空值字段 */
+  editMode?: boolean;
+  /**
+   * 这一行可执行的交互动作（1.11）。
+   *
+   * 由上层按表名匹配交互规则算出，整张表共用一组 —— 因此**不在这里
+   * 按行再算一遍**，那会把同一件事做 50 遍。
+   */
+  actions?: ActionItem[];
+  /** 每个动作最终会发出去的那句话，用作按钮 tooltip。键是动作 label。 */
+  actionPreview?: (action: ActionItem, name: string) => string;
+  lang?: Lang;
 }>();
 
 const emit = defineEmits<{
   /** 请求把某列改为某值。实际写入由上层执行。 */
   setCell: [rowIndex: number, label: string, value: string];
+  /** 请求删掉这一行。不可撤销，组件内已做二次确认。 */
+  remove: [rowIndex: number];
+  /** 请求执行一个交互动作。发送由上层负责。 */
+  act: [action: ActionItem, name: string];
 }>();
+
+/** 与上层的 fieldKey 同构，否则 pending 对不上号 */
+function fieldKey(label: string): string {
+  return `${props.row.rowIndex}#${label}`;
+}
+function isPending(label: string): boolean {
+  return props.pending === fieldKey(label);
+}
 
 /** 超过此长度独占整行。半行放不下的文本换行后会比邻列高出许多，反而更乱。 */
 const LONG_TEXT_THRESHOLD = 24;
@@ -66,23 +101,31 @@ const enumFields = computed(() => {
       label,
       value: String(props.row.cells[label] ?? ''),
       options: props.enums![label],
-      editable: editable.has(label),
+      // 编辑模式下放开全部枚举列：用户已经明确表示「我要改这张表」
+      editable: props.editMode || editable.has(label),
     }))
     .filter((f) => f.editable || f.value !== '');
 });
 
+/**
+ * 普通字段。
+ *
+ * 编辑模式下**空值字段也要显示** —— 值为空时正是最需要填它的时候，
+ * 按只读态的规矩跳过，用户就没有任何入口把它填上。
+ * 首列作了标题，编辑模式下也要能改，所以此时不再 slice 掉它。
+ */
 const fields = computed(() => {
   const enumLabels = new Set(enumFields.value.map((f) => f.label));
   return dataCols.value
-    .slice(1) // 首列已作标题
+    .slice(props.editMode ? 0 : 1)
     .filter((label) => !enumLabels.has(label))
     .map((label) => ({ label, value: props.row.cells[label] }))
-    .filter((f) => !isEmpty(f.value))
+    .filter((f) => props.editMode || !isEmpty(f.value))
     .map((f) => ({
       label: f.label,
-      text: String(f.value),
+      text: String(f.value ?? ''),
       // NCol 的 span 是字面量联合类型，写成 number 会被推宽而失配
-      span: (String(f.value).length > LONG_TEXT_THRESHOLD ? 24 : 12) as 24 | 12,
+      span: (String(f.value ?? '').length > LONG_TEXT_THRESHOLD ? 24 : 12) as 24 | 12,
     }));
 });
 </script>
@@ -94,7 +137,23 @@ const fields = computed(() => {
         <span class="bara-row-card__title">{{ title }}</span>
       </template>
       <template #header-extra>
-        <NTag size="small" :bordered="false">#{{ index }}</NTag>
+        <span class="bara-row-card__extra">
+          <NTag size="small" :bordered="false">#{{ index }}</NTag>
+          <!-- 删行只在编辑模式出现：浏览态不该摆一个不可撤销的按钮 -->
+          <NPopconfirm v-if="editMode" @positive-click="emit('remove', row.rowIndex)">
+            <template #trigger>
+              <NButton
+                size="tiny"
+                quaternary
+                :loading="isPending('remove')"
+                :title="t('table.removeRow', lang ?? 'zh-CN')"
+              >
+                <template #icon><NIcon :component="ICONS.fail" /></template>
+              </NButton>
+            </template>
+            {{ t('table.removeRowConfirm', lang ?? 'zh-CN', { title }) }}
+          </NPopconfirm>
+        </span>
       </template>
 
       <!-- 枚举区作为描述段：它是这张卡上唯一可操作的部分，应排在正文之前 -->
@@ -113,7 +172,7 @@ const fields = computed(() => {
                 size="tiny"
                 :type="opt === e.value ? 'primary' : 'default'"
                 :secondary="opt !== e.value"
-                :disabled="pending === e.label || opt === e.value"
+                :disabled="isPending(e.label) || opt === e.value"
                 @click="emit('setCell', row.rowIndex, e.label, opt)"
               >
                 {{ opt }}
@@ -130,10 +189,44 @@ const fields = computed(() => {
         <NCol v-for="f in fields" :key="f.label" :span="f.span">
           <div class="bara-field">
             <span class="bara-field__label">{{ f.label }}</span>
-            <span class="bara-field__value">{{ f.text }}</span>
+            <!--
+              长文本用多行输入框：一行的框里改一段 200 字的环境描述，
+              看不见自己在改什么。
+            -->
+            <EditableValue
+              v-if="editMode"
+              class="bara-field__value"
+              :value="f.text"
+              :multiline="f.span === 24"
+              :pending="isPending(f.label)"
+              @submit="(v) => emit('setCell', row.rowIndex, f.label, v)"
+            />
+            <span v-else class="bara-field__value">{{ f.text }}</span>
           </div>
         </NCol>
       </NRow>
+
+      <!--
+        交互动作（1.11）。放在正文之后 —— 它是「读完这一行之后想做什么」，
+        排在字段之前会让人先看到按钮再看到内容。
+
+        编辑模式下不显示：那时用户在改数据，不是在做动作，
+        而两种意图混在同一张卡上容易误点。
+      -->
+      <template v-if="!editMode && actions?.length" #action>
+        <div class="bara-row-card__acts">
+          <NButton
+            v-for="a in actions"
+            :key="a.label"
+            size="tiny"
+            secondary
+            :title="actionPreview?.(a, title) ?? a.label"
+            @click="emit('act', a, title)"
+          >
+            {{ a.label }}
+          </NButton>
+        </div>
+      </template>
     </NThing>
   </NCard>
 </template>
@@ -145,6 +238,18 @@ const fields = computed(() => {
   word-break: break-word;
 }
 .bara-row-card__sep { margin: var(--bara-space-3) 0 0; }
+.bara-row-card__extra {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--bara-space-1);
+}
+
+/* 动作按钮换行排：一张卡可能有三四个动作，窄卡片下放不下一行 */
+.bara-row-card__acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bara-space-1);
+}
 
 .bara-enums {
   display: flex;

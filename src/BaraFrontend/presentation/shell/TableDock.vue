@@ -24,6 +24,7 @@ const emit = defineEmits<{ navigate: [] }>();
 const isDashboard = computed(() => ui.destination.kind === 'dashboard');
 const isReview = computed(() => ui.destination.kind === 'review');
 const isVars = computed(() => ui.destination.kind === 'variables');
+const isInteractions = computed(() => ui.destination.kind === 'interactions');
 
 /** 变更数随表数据变化重算 —— 角标要能在 AI 填完表后立刻跟上 */
 const changeCount = computed(() => {
@@ -65,6 +66,22 @@ const listClass = computed(() =>
         >
           <NIcon v-if="ui.dockIcons" class="bara-dock__icon" :component="FUNCTION_ICONS.dashboard" />
           <span class="bara-dock__label">{{ t('dest.dashboard', ui.lang) }}</span>
+        </NTag>
+
+        <!--
+          交互总览紧跟仪表盘：两者都回答「当前局面」，只是一个说「是什么」、
+          一个说「能做什么」。审核与变量是事后回看的工具，排在后面。
+        -->
+        <NTag
+          size="large"
+          round
+          checkable
+          class="bara-dock__item"
+          :checked="isInteractions"
+          @update:checked="ui.goTo({ kind: 'interactions' }); emit('navigate')"
+        >
+          <NIcon v-if="ui.dockIcons" class="bara-dock__icon" :component="FUNCTION_ICONS.interactions" />
+          <span class="bara-dock__label">{{ t('dest.interactions', ui.lang) }}</span>
         </NTag>
 
         <NTag

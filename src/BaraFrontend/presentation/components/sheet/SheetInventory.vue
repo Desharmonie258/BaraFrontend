@@ -14,10 +14,32 @@ import type { Lang } from '../../../stores/ui-store';
 import { t } from '../../../i18n';
 import SectionList from './SectionList.vue';
 
-const props = defineProps<{ character: CharacterVM; lang: Lang }>();
+const props = defineProps<{
+  character: CharacterVM;
+  lang: Lang;
+  /** 编辑态与写入中标识，原样传给各分区（1.11） */
+  editing?: boolean;
+  pending?: string | null;
+  /**
+   * 刷新令牌。手改写入后由抽屉推进 —— 分区数据是 computed 出来的，
+   * 不给它一个会变的依赖，写完界面仍是旧值。
+   */
+  refreshKey?: number;
+}>();
 
-const equipment = computed(() => readCharacterSection('equipment', props.character));
-const items = computed(() => readCharacterSection('items', props.character));
+/** 分区的改动一路上抛到抽屉执行 —— 中间层不碰数据层 */
+const emit = defineEmits<{
+  setCell: [sheetName: string, rowIndex: number, column: string, value: string];
+}>();
+
+const equipment = computed(() => {
+  void props.refreshKey;
+  return readCharacterSection('equipment', props.character);
+});
+const items = computed(() => {
+  void props.refreshKey;
+  return readCharacterSection('items', props.character);
+});
 </script>
 
 <template>
@@ -39,6 +61,9 @@ const items = computed(() => readCharacterSection('items', props.character));
         group-by="类型"
         :tag-columns="['品质', '状态']"
         :body-columns="['描述']"
+        :editing="editing"
+        :pending="pending"
+        @set-cell="(...a) => emit('setCell', ...a)"
         :empty-text="t('dashboard.empty.equipment', lang)"
       />
     </section>
@@ -52,6 +77,9 @@ const items = computed(() => readCharacterSection('items', props.character));
         group-by="类型"
         :tag-columns="['数量', '品质']"
         :body-columns="['描述']"
+        :editing="editing"
+        :pending="pending"
+        @set-cell="(...a) => emit('setCell', ...a)"
         :empty-text="t('dashboard.empty.items', lang)"
       />
     </section>
