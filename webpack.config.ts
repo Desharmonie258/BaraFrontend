@@ -545,6 +545,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
       ) {
         return callback();
       }
+<<<<<<< HEAD
       // 必须与宿主共用同一个 Vue 实例的库，一律本地打包而不走 CDN。
       //
       // 走 CDN 的 `/+esm` 会连带引入另一份 Vue，组件因此运行在与宿主
@@ -592,6 +593,8 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
         return callback();
       }
 
+=======
+>>>>>>> c6777179271f97bed734047fcdd7a3d0067157ec
       const global = {
         jquery: '$',
         lodash: '_',
