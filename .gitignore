@@ -11,5 +11,8 @@ pnpm-debug.log*
 
 auto-imports.d.ts
 components.d.ts
+<<<<<<< HEAD
 
 dist
+=======
+>>>>>>> 874db47f3fb8ed8544a74e33a59f780f2c95aa38
